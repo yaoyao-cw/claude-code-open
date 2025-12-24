@@ -7,42 +7,41 @@ import { commandRegistry } from './registry.js';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// /cost - 费用统计
+// /cost - 费用统计 (官方风格)
 export const costCommand: SlashCommand = {
   name: 'cost',
-  description: 'Show API cost and spending information',
+  description: 'Show the total cost and duration of the current session',
   category: 'utility',
   execute: (ctx: CommandContext): CommandResult => {
     const stats = ctx.session.getStats();
+    const durationMins = Math.floor(stats.duration / 60000);
+    const durationSecs = Math.floor((stats.duration % 60000) / 1000);
 
-    const costInfo = `API Cost Information:
+    let costInfo = `Session Cost\n\n`;
 
-Current Session:
-  Cost: ${stats.totalCost}
-  Messages: ${stats.messageCount}
-  Duration: ${Math.round(stats.duration / 1000)}s
+    // 当前会话统计
+    costInfo += `This Session\n`;
+    costInfo += `  Cost: ${stats.totalCost}\n`;
+    costInfo += `  Duration: ${durationMins}m ${durationSecs}s\n`;
+    costInfo += `  Messages: ${stats.messageCount}\n\n`;
 
-Pricing (Anthropic API):
-  Claude Opus:
-    Input:  $15.00 / 1M tokens
-    Output: $75.00 / 1M tokens
+    // 模型使用统计
+    const usage = stats.modelUsage;
+    if (Object.keys(usage).length > 0) {
+      costInfo += `Token Usage\n`;
+      for (const [model, tokens] of Object.entries(usage)) {
+        costInfo += `  ${model}: ${tokens.toLocaleString()} tokens\n`;
+      }
+      costInfo += '\n';
+    }
 
-  Claude Sonnet:
-    Input:  $3.00 / 1M tokens
-    Output: $15.00 / 1M tokens
+    // 定价参考
+    costInfo += `Pricing Reference\n`;
+    costInfo += `  Opus 4:   $15/$75 per 1M tokens (in/out)\n`;
+    costInfo += `  Sonnet 4: $3/$15 per 1M tokens (in/out)\n`;
+    costInfo += `  Haiku 3.5: $0.25/$1.25 per 1M tokens (in/out)\n\n`;
 
-  Claude Haiku:
-    Input:  $0.25 / 1M tokens
-    Output: $1.25 / 1M tokens
-
-For detailed billing:
-  - API: https://console.anthropic.com/billing
-  - claude.ai: https://claude.ai/settings/billing
-
-Tips to reduce costs:
-  - Use Haiku for simple tasks
-  - Use /compact to reduce context
-  - Be concise in prompts`;
+    costInfo += `For detailed billing: https://console.anthropic.com/billing`;
 
     ctx.ui.addMessage('assistant', costInfo);
     return { success: true };
