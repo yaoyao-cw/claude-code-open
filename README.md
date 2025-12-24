@@ -1,303 +1,303 @@
 # Claude Code (Restored)
 
-基于 `@anthropic-ai/claude-code` v2.0.76 的逆向工程还原实现。
+A reverse-engineered restoration based on `@anthropic-ai/claude-code` v2.0.76.
 
-**仅用于教育和研究目的。**
+**For educational and research purposes only.**
 
-## 免责声明
+## Disclaimer
 
-这是一个教育项目，用于研究和学习 CLI 工具的架构设计。这**不是**官方 Claude Code 的源代码，而是基于公开 API 和类型定义的重新实现。
+This is an educational project for studying and learning CLI tool architecture design. This is **NOT** the official Claude Code source code, but a reimplementation based on public APIs and type definitions.
 
-如需使用官方 Claude Code，请安装官方版本：
+For the official Claude Code, please install the official version:
 ```bash
 npm install -g @anthropic-ai/claude-code
 ```
 
-## 安装
+## Installation
 
 ```bash
-# 安装依赖
+# Install dependencies
 npm install
 
-# 构建项目
+# Build the project
 npm run build
 
-# 全局链接（可选）
+# Link globally (optional)
 npm link
 ```
 
-## 使用
+## Usage
 
 ```bash
-# 交互模式
+# Interactive mode
 npm run dev
 
-# 或构建后运行
+# Or run after building
 node dist/cli.js
 
-# 带初始 prompt
-node dist/cli.js "你好，请帮我分析这个项目"
+# With initial prompt
+node dist/cli.js "Hello, please analyze this project"
 
-# 打印模式
-node dist/cli.js -p "解释这段代码"
+# Print mode
+node dist/cli.js -p "Explain this code"
 
-# 指定模型
-node dist/cli.js -m opus "复杂任务"
+# Specify model
+node dist/cli.js -m opus "Complex task"
 
-# 恢复上一次会话
+# Resume last session
 node dist/cli.js --resume
 ```
 
-## 配置
+## Configuration
 
-设置 API 密钥：
+Set up your API key:
 ```bash
 export ANTHROPIC_API_KEY=your-api-key
-# 或
+# or
 export CLAUDE_API_KEY=your-api-key
 ```
 
-### 环境变量
+### Environment Variables
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `ANTHROPIC_API_KEY` | API 密钥 | - |
-| `BASH_MAX_OUTPUT_LENGTH` | Bash 输出最大长度 | 30000 |
-| `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | 最大输出 tokens | 32000 |
-| `CLAUDE_TELEMETRY_ENABLED` | 启用遥测 | true |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ANTHROPIC_API_KEY` | API Key | - |
+| `BASH_MAX_OUTPUT_LENGTH` | Max Bash output length | 30000 |
+| `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | Max output tokens | 32000 |
+| `CLAUDE_TELEMETRY_ENABLED` | Enable telemetry | true |
 
-## 项目结构
+## Project Structure
 
 ```
 src/
-├── index.ts                # 主入口
-├── cli.ts                  # CLI 入口点
+├── index.ts                # Main entry
+├── cli.ts                  # CLI entry point
 ├── core/
-│   ├── client.ts           # Anthropic API 客户端 (带重试和成本计算)
-│   ├── session.ts          # 会话管理
-│   └── loop.ts             # 对话循环
-├── tools/                  # 25 个工具
-│   ├── base.ts             # 工具基类
-│   ├── bash.ts             # Bash 命令执行 (带沙箱)
-│   ├── file.ts             # 文件读写编辑
-│   ├── multiedit.ts        # 批量编辑
-│   ├── search.ts           # Glob/Grep 搜索
-│   ├── web.ts              # Web 获取/搜索
-│   ├── todo.ts             # 任务管理
-│   ├── agent.ts            # 子代理
-│   ├── notebook.ts         # Jupyter Notebook 编辑
-│   ├── planmode.ts         # 计划模式
-│   ├── mcp.ts              # MCP 协议客户端
-│   ├── ask.ts              # 用户问答
-│   ├── tmux.ts             # Tmux 多终端
-│   ├── skill.ts            # 技能和斜杠命令
-│   └── sandbox.ts          # Bubblewrap 沙箱
-├── ui/                     # Ink/React UI 组件
-│   ├── App.tsx             # 主应用
-│   └── components/         # UI 组件
+│   ├── client.ts           # Anthropic API client (with retry & cost calculation)
+│   ├── session.ts          # Session management
+│   └── loop.ts             # Conversation loop
+├── tools/                  # 25 tools
+│   ├── base.ts             # Tool base class
+│   ├── bash.ts             # Bash execution (with sandbox)
+│   ├── file.ts             # File read/write/edit
+│   ├── multiedit.ts        # Batch editing
+│   ├── search.ts           # Glob/Grep search
+│   ├── web.ts              # Web fetch/search
+│   ├── todo.ts             # Task management
+│   ├── agent.ts            # Sub-agents
+│   ├── notebook.ts         # Jupyter Notebook editing
+│   ├── planmode.ts         # Plan mode
+│   ├── mcp.ts              # MCP protocol client
+│   ├── ask.ts              # User Q&A
+│   ├── tmux.ts             # Tmux multi-terminal
+│   ├── skill.ts            # Skills and slash commands
+│   └── sandbox.ts          # Bubblewrap sandbox
+├── ui/                     # Ink/React UI components
+│   ├── App.tsx             # Main app
+│   └── components/         # UI components
 ├── hooks/
-│   └── index.ts            # Hooks 系统
+│   └── index.ts            # Hooks system
 ├── auth/
-│   └── index.ts            # OAuth 认证
+│   └── index.ts            # OAuth authentication
 ├── session/
-│   └── index.ts            # 会话持久化和恢复
+│   └── index.ts            # Session persistence & recovery
 ├── context/
-│   └── index.ts            # 上下文管理和压缩
+│   └── index.ts            # Context management & compression
 ├── parser/
-│   └── index.ts            # 代码解析器
+│   └── index.ts            # Code parser
 ├── search/
-│   └── ripgrep.ts          # Vendored ripgrep 支持
+│   └── ripgrep.ts          # Vendored ripgrep support
 ├── telemetry/
-│   └── index.ts            # 遥测和分析
+│   └── index.ts            # Telemetry & analytics
 ├── config/
-│   └── index.ts            # 配置管理
+│   └── index.ts            # Configuration management
 ├── utils/
-│   └── index.ts            # 工具函数
+│   └── index.ts            # Utility functions
 └── types/
-    └── index.ts            # 类型定义
+    └── index.ts            # Type definitions
 ```
 
-## 已实现的工具 (25个)
+## Implemented Tools (25)
 
-| 工具 | 状态 | 说明 |
-|------|------|------|
-| Bash | ✅ 完整 | 命令执行，支持后台运行和沙箱 |
-| BashOutput | ✅ 完整 | 获取后台命令输出 |
-| KillShell | ✅ 完整 | 终止后台进程 |
-| Read | ✅ 完整 | 文件读取，支持图片/PDF/Notebook |
-| Write | ✅ 完整 | 文件写入 |
-| Edit | ✅ 完整 | 文件编辑（字符串替换） |
-| **MultiEdit** | ✅ 完整 | 批量文件编辑（原子操作） |
-| Glob | ✅ 完整 | 文件模式匹配 |
-| Grep | ✅ 完整 | 内容搜索（基于 ripgrep） |
-| WebFetch | ✅ 完整 | 网页获取 |
-| WebSearch | ⚠️ 需要配置 | 需要搜索 API |
-| TodoWrite | ✅ 完整 | 任务管理 |
-| Task | ✅ 完整 | 子代理 |
-| TaskOutput | ✅ 完整 | 获取代理输出 |
-| NotebookEdit | ✅ 完整 | Jupyter Notebook 单元格编辑 |
-| EnterPlanMode | ✅ 完整 | 进入计划模式 |
-| ExitPlanMode | ✅ 完整 | 退出计划模式 |
-| ListMcpResources | ✅ 完整 | 列出 MCP 资源 |
-| ReadMcpResource | ✅ 完整 | 读取 MCP 资源 |
-| AskUserQuestion | ✅ 完整 | 向用户提问 |
-| **Tmux** | ✅ 完整 | 多终端会话管理 |
-| **Skill** | ✅ 完整 | 技能系统 |
-| **SlashCommand** | ✅ 完整 | 自定义斜杠命令 |
+| Tool | Status | Description |
+|------|--------|-------------|
+| Bash | ✅ Complete | Command execution with background & sandbox support |
+| BashOutput | ✅ Complete | Get background command output |
+| KillShell | ✅ Complete | Terminate background processes |
+| Read | ✅ Complete | File reading with image/PDF/Notebook support |
+| Write | ✅ Complete | File writing |
+| Edit | ✅ Complete | File editing (string replacement) |
+| **MultiEdit** | ✅ Complete | Batch file editing (atomic operations) |
+| Glob | ✅ Complete | File pattern matching |
+| Grep | ✅ Complete | Content search (ripgrep-based) |
+| WebFetch | ✅ Complete | Web page fetching |
+| WebSearch | ⚠️ Needs config | Requires search API |
+| TodoWrite | ✅ Complete | Task management |
+| Task | ✅ Complete | Sub-agents |
+| TaskOutput | ✅ Complete | Get agent output |
+| NotebookEdit | ✅ Complete | Jupyter Notebook cell editing |
+| EnterPlanMode | ✅ Complete | Enter plan mode |
+| ExitPlanMode | ✅ Complete | Exit plan mode |
+| ListMcpResources | ✅ Complete | List MCP resources |
+| ReadMcpResource | ✅ Complete | Read MCP resource |
+| AskUserQuestion | ✅ Complete | Ask user questions |
+| **Tmux** | ✅ Complete | Multi-terminal session management |
+| **Skill** | ✅ Complete | Skill system |
+| **SlashCommand** | ✅ Complete | Custom slash commands |
 
-## 新增功能
+## Features
 
-### OAuth 认证
+### OAuth Authentication
 
-支持 API Key 和 OAuth 两种认证方式：
+Supports both API Key and OAuth authentication:
 
 ```typescript
 import { initAuth, startOAuthLogin, setApiKey } from './auth';
 
-// 使用 API Key
-setApiKey('your-api-key', true); // true 表示持久化
+// Using API Key
+setApiKey('your-api-key', true); // true for persistence
 
-// 或使用 OAuth 登录
+// Or using OAuth login
 await startOAuthLogin({
   clientId: 'your-client-id',
   scope: ['read', 'write'],
 });
 ```
 
-### 会话持久化和恢复
+### Session Persistence & Recovery
 
-自动保存和恢复对话：
+Automatic conversation saving and restoration:
 
 ```typescript
 import { SessionManager, listSessions, loadSession } from './session';
 
 const manager = new SessionManager({ autoSave: true });
 
-// 开始新会话或恢复
+// Start new session or resume
 const session = manager.start({
   model: 'claude-sonnet-4-20250514',
-  resume: true, // 尝试恢复上次会话
+  resume: true, // Try to resume last session
 });
 
-// 列出所有会话
+// List all sessions
 const sessions = listSessions({ limit: 10 });
 
-// 导出为 Markdown
+// Export as Markdown
 const markdown = manager.export();
 ```
 
-### 上下文管理
+### Context Management
 
-智能上下文压缩和摘要：
+Intelligent context compression and summarization:
 
 ```typescript
 import { ContextManager, estimateTokens } from './context';
 
 const context = new ContextManager({
   maxTokens: 180000,
-  summarizeThreshold: 0.7, // 70% 时开始压缩
+  summarizeThreshold: 0.7, // Start compressing at 70%
   keepRecentMessages: 10,
 });
 
-// 添加对话
+// Add conversation turn
 context.addTurn(userMessage, assistantMessage);
 
-// 获取优化后的消息
+// Get optimized messages
 const messages = context.getMessages();
 
-// 手动压缩
+// Manual compaction
 context.compact();
 ```
 
-### 代码解析器
+### Code Parser
 
-支持多语言代码分析：
+Multi-language code analysis support:
 
 ```typescript
 import { parseFile, parseCode, detectLanguage } from './parser';
 
-// 检测语言
+// Detect language
 const lang = detectLanguage('app.tsx'); // 'typescript'
 
-// 解析文件
+// Parse file
 const parsed = parseFile('/path/to/file.ts');
-console.log(parsed.classes);    // 类定义
-console.log(parsed.functions);  // 函数定义
-console.log(parsed.imports);    // 导入语句
-console.log(parsed.exports);    // 导出语句
+console.log(parsed.classes);    // Class definitions
+console.log(parsed.functions);  // Function definitions
+console.log(parsed.imports);    // Import statements
+console.log(parsed.exports);    // Export statements
 ```
 
-支持的语言：JavaScript, TypeScript, Python, Go, Rust, Java, C/C++, Ruby, PHP, Swift, Kotlin, Scala 等。
+Supported languages: JavaScript, TypeScript, Python, Go, Rust, Java, C/C++, Ruby, PHP, Swift, Kotlin, Scala, etc.
 
 ### Vendored Ripgrep
 
-内置 ripgrep 支持，无需系统安装：
+Built-in ripgrep support, no system installation required:
 
 ```typescript
 import { search, listFiles, getRipgrepVersion } from './search/ripgrep';
 
-// 搜索内容
+// Search content
 const results = await search({
   pattern: 'function.*async',
   glob: '*.ts',
   ignoreCase: true,
 });
 
-// 列出文件
+// List files
 const files = await listFiles({
   glob: '**/*.tsx',
   hidden: false,
 });
 ```
 
-### 遥测和分析
+### Telemetry & Analytics
 
-本地使用统计（数据不会上传）：
+Local usage statistics (data is not uploaded):
 
 ```typescript
 import { telemetry, getTelemetryStats } from './telemetry';
 
-// 记录会话
+// Record session
 telemetry.startSession('claude-sonnet-4-20250514');
 telemetry.recordMessage('user', 100);
 telemetry.recordToolCall('Bash', true, 50);
 telemetry.endSession();
 
-// 获取统计
+// Get statistics
 const stats = getTelemetryStats();
 console.log(stats.totalSessions);
 console.log(stats.totalTokens);
 ```
 
-### Ink/React UI 框架
+### Ink/React UI Framework
 
-完整的终端 UI 组件系统：
-- `Spinner` - 加载动画
-- `ToolCall` - 工具调用显示
-- `Message` - 消息显示
-- `Input` - 输入框
-- `Header` - 标题栏
-- `TodoList` - 任务列表
-- `PermissionPrompt` - 权限确认
-- `StatusBar` - 状态栏
+Complete terminal UI component system:
+- `Spinner` - Loading animations
+- `ToolCall` - Tool call display
+- `Message` - Message display
+- `Input` - Input box
+- `Header` - Header bar
+- `TodoList` - Task list
+- `PermissionPrompt` - Permission confirmation
+- `StatusBar` - Status bar
 
-### 沙箱支持 (Bubblewrap)
+### Sandbox Support (Bubblewrap)
 
-如果系统安装了 `bubblewrap`，Bash 命令将在沙箱中执行，提供额外的安全隔离：
+If `bubblewrap` is installed, Bash commands will execute in a sandbox for enhanced security:
 
 ```bash
-# Ubuntu/Debian 安装
+# Ubuntu/Debian
 sudo apt install bubblewrap
 
 # Arch Linux
 sudo pacman -S bubblewrap
 ```
 
-可以通过 `dangerouslyDisableSandbox: true` 参数禁用沙箱。
+Sandbox can be disabled with `dangerouslyDisableSandbox: true` parameter.
 
-### Hooks 系统
+### Hooks System
 
-支持在工具调用前后执行自定义脚本：
+Execute custom scripts before/after tool calls:
 
 ```json
 // .claude/settings.json
@@ -313,17 +313,17 @@ sudo pacman -S bubblewrap
 }
 ```
 
-支持的事件：
-- `PreToolUse` - 工具调用前
-- `PostToolUse` - 工具调用后
-- `PrePromptSubmit` - 提交前
-- `PostPromptSubmit` - 提交后
-- `Notification` - 通知
-- `Stop` - 停止
+Supported events:
+- `PreToolUse` - Before tool call
+- `PostToolUse` - After tool call
+- `PrePromptSubmit` - Before submission
+- `PostPromptSubmit` - After submission
+- `Notification` - Notifications
+- `Stop` - Stop
 
-### MCP 协议支持
+### MCP Protocol Support
 
-支持连接 MCP (Model Context Protocol) 服务器：
+Connect to MCP (Model Context Protocol) servers:
 
 ```json
 // .claude/settings.json
@@ -338,93 +338,95 @@ sudo pacman -S bubblewrap
 }
 ```
 
-### Tmux 多终端
+### Tmux Multi-terminal
 
-管理多个终端会话：
+Manage multiple terminal sessions:
 ```javascript
-// 创建会话
+// Create session
 { action: "new", session_name: "dev-server" }
 
-// 发送命令
+// Send command
 { action: "send", session_name: "dev-server", command: "npm run dev" }
 
-// 捕获输出
+// Capture output
 { action: "capture", session_name: "dev-server" }
 ```
 
-### 技能和自定义命令
+### Skills & Custom Commands
 
-从 `~/.claude/skills/` 和 `.claude/commands/` 加载：
-- 技能 (Skill): 可复用的 prompt 模板
-- 斜杠命令 (SlashCommand): 自定义命令扩展
+Load from `~/.claude/skills/` and `.claude/commands/`:
+- Skills: Reusable prompt templates
+- Slash Commands: Custom command extensions
 
-### API 客户端增强
+### Enhanced API Client
 
-- 指数退避重试（最多 4 次）
-- 自动成本计算
-- Token 使用统计
-- 支持多种模型定价
+- Exponential backoff retry (up to 4 times)
+- Automatic cost calculation
+- Token usage statistics
+- Multi-model pricing support
 
-## 斜杠命令
+## Slash Commands
 
-- `/help` - 显示帮助
-- `/clear` - 清除对话历史
-- `/save` - 保存会话
-- `/stats` - 显示统计
-- `/tools` - 列出工具
-- `/model` - 切换模型
-- `/resume` - 恢复会话
-- `/compact` - 压缩上下文
-- `/exit` - 退出
+- `/help` - Show help
+- `/clear` - Clear conversation history
+- `/save` - Save session
+- `/stats` - Show statistics
+- `/tools` - List tools
+- `/model` - Switch model
+- `/resume` - Resume session
+- `/compact` - Compress context
+- `/exit` - Exit
 
-## 与官方版本的对比
+## Comparison with Official Version
 
-| 组件 | 还原度 | 说明 |
-|------|--------|------|
-| CLI 入口 | ✅ 100% | 完整命令和斜杠命令 |
-| 工具实现 | ✅ 100% | 25 个核心工具 |
-| API 客户端 | ✅ 100% | 完整流式 + 重试 + 成本计算 |
-| 沙箱 | ✅ 100% | Bubblewrap 隔离 |
-| Hooks | ✅ 100% | 完整事件系统 |
-| MCP | ✅ 100% | 完整协议支持 |
-| UI | ✅ 100% | Ink/React 组件系统 |
-| Skill/Command | ✅ 100% | 技能和命令系统 |
-| 认证 | ✅ 100% | API Key + OAuth |
-| 会话管理 | ✅ 100% | 持久化和恢复 |
-| 上下文管理 | ✅ 100% | 智能压缩和摘要 |
-| 代码解析 | ✅ 100% | 多语言支持 |
-| Ripgrep | ✅ 100% | Vendored 二进制支持 |
-| 遥测 | ✅ 100% | 本地统计 |
+| Component | Accuracy | Notes |
+|-----------|----------|-------|
+| CLI Entry | ✅ 100% | Complete commands & slash commands |
+| Tool Implementation | ✅ 100% | 25 core tools |
+| API Client | ✅ 100% | Complete streaming + retry + cost calc |
+| Sandbox | ✅ 100% | Bubblewrap isolation |
+| Hooks | ✅ 100% | Complete event system |
+| MCP | ✅ 100% | Complete protocol support |
+| UI | ✅ 100% | Ink/React component system |
+| Skill/Command | ✅ 100% | Skills & command system |
+| Authentication | ✅ 100% | API Key + OAuth |
+| Session Management | ✅ 100% | Persistence & recovery |
+| Context Management | ✅ 100% | Smart compression & summarization |
+| Code Parser | ✅ 100% | Multi-language support |
+| Ripgrep | ✅ 100% | Vendored binary support |
+| Telemetry | ✅ 100% | Local statistics |
 
-**总体还原度: ~100%**
+**Overall Accuracy: ~100%**
 
-## 开发
+## Development
 
 ```bash
-# 开发模式（使用 tsx）
+# Development mode (using tsx)
 npm run dev
 
-# 构建
+# Build
 npm run build
 
-# 类型检查
+# Type checking
 npx tsc --noEmit
 ```
 
-## 技术栈
+## Tech Stack
 
-- **TypeScript** - 类型安全
-- **Anthropic SDK** - API 调用
-- **Ink + React** - 终端 UI
-- **Commander** - CLI 框架
-- **Chalk** - 终端颜色
-- **Glob** - 文件匹配
-- **Zod** - Schema 验证
+- **TypeScript** - Type safety
+- **Anthropic SDK** - API calls
+- **Ink + React** - Terminal UI
+- **Commander** - CLI framework
+- **Chalk** - Terminal colors
+- **Glob** - File matching
+- **Zod** - Schema validation
 
 ## License
 
-本项目仅用于教育目的。原始 Claude Code 归 Anthropic PBC 所有。
+This project is for educational purposes only. Original Claude Code is owned by Anthropic PBC.
 
 ---
 
-*此项目是对混淆代码的逆向工程研究，不代表官方实现。*
+*This project is a reverse engineering study of obfuscated code and does not represent the official implementation.*
+
+[中文版 README](README.zh-CN.md)
