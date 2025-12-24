@@ -60,6 +60,21 @@ export * from './updater/index.js';
 // SVG/图像渲染
 export * from './renderer/index.js';
 
+// Memory 系统
+export * from './memory/index.js';
+
+// GitHub 集成
+export * from './github/index.js';
+
+// 云服务提供商 (Bedrock, Vertex, Foundry)
+export * from './providers/index.js';
+
+// 诊断系统
+export * from './diagnostics/index.js';
+
+// 文件检查点系统
+export * from './checkpoint/index.js';
+
 // 版本信息
 export const VERSION = '2.0.76-restored';
 export const NAME = 'claude-code-restored';

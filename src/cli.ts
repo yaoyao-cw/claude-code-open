@@ -427,29 +427,41 @@ program
 program
   .command('doctor')
   .description('Check the health of your Claude Code installation')
-  .action(() => {
-    console.log(chalk.bold('\nClaude Code Health Check\n'));
+  .option('--verbose', 'Show detailed diagnostics')
+  .action(async (options) => {
+    // 动态导入诊断模块
+    const { runDiagnostics, formatDiagnosticReport } = await import('./diagnostics/index.js');
 
-    // 检查 API 密钥
-    const hasApiKey = !!(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY);
-    console.log(`  API Key: ${hasApiKey ? chalk.green('✓ Configured') : chalk.red('✗ Not found')}`);
+    console.log(chalk.bold('\nRunning Claude Code diagnostics...\n'));
 
-    // 检查 Node 版本
-    const nodeVersion = process.version;
-    const nodeMajor = parseInt(nodeVersion.slice(1).split('.')[0]);
-    console.log(`  Node.js: ${nodeMajor >= 18 ? chalk.green(`✓ ${nodeVersion}`) : chalk.red(`✗ ${nodeVersion} (need >= 18)`)}`);
+    try {
+      const report = await runDiagnostics();
 
-    // 检查工具
-    console.log(`  Tools: ${chalk.green(`✓ ${toolRegistry.getAll().length} registered`)}`);
+      // 显示报告
+      console.log(formatDiagnosticReport(report));
 
-    // 检查 MCP 服务器
-    const mcpServers = Object.keys(configManager.getMcpServers());
-    console.log(`  MCP Servers: ${mcpServers.length > 0 ? chalk.green(`✓ ${mcpServers.length} configured`) : chalk.gray('○ None configured')}`);
+      // 颜色化总结
+      if (report.summary.failed > 0) {
+        console.log(chalk.red(`  ✗ ${report.summary.failed} critical issue(s) found`));
+      }
+      if (report.summary.warnings > 0) {
+        console.log(chalk.yellow(`  ⚠ ${report.summary.warnings} warning(s)`));
+      }
+      if (report.summary.failed === 0 && report.summary.warnings === 0) {
+        console.log(chalk.green('  ✓ All checks passed!'));
+      }
 
-    // 检查配置目录
-    const configDir = process.env.CLAUDE_CONFIG_DIR || path.join(process.env.HOME || '~', '.claude');
-    const configExists = fs.existsSync(configDir);
-    console.log(`  Config Dir: ${configExists ? chalk.green(`✓ ${configDir}`) : chalk.gray(`○ ${configDir} (will be created)`)}`);
+      // 详细模式
+      if (options.verbose) {
+        console.log(chalk.gray('\n  Additional info:'));
+        console.log(chalk.gray(`  - Working directory: ${process.cwd()}`));
+        console.log(chalk.gray(`  - Tools registered: ${toolRegistry.getAll().length}`));
+        const mcpServers = Object.keys(configManager.getMcpServers());
+        console.log(chalk.gray(`  - MCP servers: ${mcpServers.length}`));
+      }
+    } catch (err) {
+      console.log(chalk.red(`\n  ✗ Diagnostics failed: ${err}`));
+    }
 
     console.log();
   });
@@ -572,6 +584,103 @@ program
     console.log(chalk.gray(`Changes: +${prInfo.additions} -${prInfo.deletions} (${prInfo.changedFiles} files)`));
     console.log();
     console.log(chalk.gray('Use Claude to review: claude "review PR #' + prNumber + '"'));
+    console.log();
+  });
+
+// Provider 命令 - 显示云提供商信息
+program
+  .command('provider')
+  .description('Show current API provider configuration')
+  .action(async () => {
+    const { detectProvider, getProviderInfo, validateProviderConfig, getProviderDisplayName } = await import('./providers/index.js');
+
+    console.log(chalk.bold('\n☁️  API Provider Configuration\n'));
+
+    const config = detectProvider();
+    const info = getProviderInfo(config);
+    const validation = validateProviderConfig(config);
+
+    console.log(`  Provider: ${chalk.cyan(getProviderDisplayName(config.type))}`);
+    console.log(`  Model:    ${chalk.gray(info.model)}`);
+    console.log(`  Base URL: ${chalk.gray(info.baseUrl)}`);
+
+    if (info.region) {
+      console.log(`  Region:   ${chalk.gray(info.region)}`);
+    }
+
+    if (validation.valid) {
+      console.log(chalk.green('\n  ✓ Configuration is valid'));
+    } else {
+      console.log(chalk.red('\n  ✗ Configuration issues:'));
+      validation.errors.forEach((err) => {
+        console.log(chalk.red(`    - ${err}`));
+      });
+    }
+
+    console.log(chalk.gray('\n  Environment variables:'));
+    const envVars = [
+      'ANTHROPIC_API_KEY',
+      'CLAUDE_CODE_USE_BEDROCK',
+      'CLAUDE_CODE_USE_VERTEX',
+      'AWS_REGION',
+      'ANTHROPIC_VERTEX_PROJECT_ID',
+    ];
+
+    envVars.forEach((v) => {
+      const val = process.env[v];
+      if (val) {
+        const display = v.includes('KEY') ? `***${val.slice(-4)}` : val;
+        console.log(chalk.gray(`    ${v}=${display}`));
+      }
+    });
+
+    console.log();
+  });
+
+// Checkpoint 命令 - 管理文件检查点
+program
+  .command('checkpoint')
+  .description('Manage file checkpoints')
+  .argument('[action]', 'Action: list, restore, clear')
+  .argument('[file]', 'File path (for restore)')
+  .action(async (action, file) => {
+    const { getCurrentSession, getCheckpointHistory, restoreCheckpoint, clearCheckpoints } = await import('./checkpoint/index.js');
+
+    const session = getCurrentSession();
+
+    if (!action || action === 'list') {
+      console.log(chalk.bold('\n📌 File Checkpoints\n'));
+
+      if (!session) {
+        console.log(chalk.gray('  No active checkpoint session.'));
+        console.log();
+        return;
+      }
+
+      const files = Array.from(session.checkpoints.keys());
+      if (files.length === 0) {
+        console.log(chalk.gray('  No checkpoints recorded yet.'));
+      } else {
+        files.forEach((f) => {
+          const history = getCheckpointHistory(f);
+          console.log(chalk.cyan(`  ${f}`));
+          console.log(chalk.gray(`    ${history.checkpoints.length} checkpoint(s), current: #${history.currentIndex + 1}`));
+        });
+      }
+    } else if (action === 'restore' && file) {
+      const result = restoreCheckpoint(file);
+      if (result.success) {
+        console.log(chalk.green(`\n  ✓ ${result.message}`));
+      } else {
+        console.log(chalk.red(`\n  ✗ ${result.message}`));
+      }
+    } else if (action === 'clear') {
+      clearCheckpoints();
+      console.log(chalk.green('\n  ✓ All checkpoints cleared'));
+    } else {
+      console.log(chalk.yellow('\n  Usage: claude checkpoint [list|restore <file>|clear]'));
+    }
+
     console.log();
   });
 
