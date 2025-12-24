@@ -11,6 +11,45 @@ import * as os from 'os';
 // 获取会话目录
 const getSessionsDir = () => path.join(os.homedir(), '.claude', 'sessions');
 
+// 读取会话文件并解析
+interface SessionFileData {
+  id: string;
+  modified: Date;
+  messageCount: number;
+  cwd: string;
+  summary: string;
+  firstUserMessage?: string;
+}
+
+function parseSessionFile(filePath: string): SessionFileData | null {
+  try {
+    const stat = fs.statSync(filePath);
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    const fileName = path.basename(filePath, '.json');
+
+    // 支持两种格式: { state, messages } 或 { messages, cwd, ... }
+    const messages = data.messages || [];
+    const cwd = data.state?.cwd || data.cwd || 'Unknown';
+
+    // 获取第一条用户消息作为摘要
+    const firstUserMsg = messages.find((m: any) => m.role === 'user');
+    const summary = data.summary ||
+      (firstUserMsg?.content?.slice(0, 60)) ||
+      'No messages';
+
+    return {
+      id: data.state?.sessionId || fileName,
+      modified: stat.mtime,
+      messageCount: messages.length,
+      cwd,
+      summary,
+      firstUserMessage: firstUserMsg?.content,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // /resume - 恢复会话
 export const resumeCommand: SlashCommand = {
   name: 'resume',
@@ -23,62 +62,74 @@ export const resumeCommand: SlashCommand = {
     const sessionsDir = getSessionsDir();
 
     if (!fs.existsSync(sessionsDir)) {
-      ctx.ui.addMessage('assistant', 'No previous sessions found.');
+      ctx.ui.addMessage('assistant', `No previous sessions found.\n\nSessions are saved to: ${sessionsDir}\n\nStart a conversation and it will be automatically saved.`);
       return { success: false };
     }
 
     try {
-      const sessions = fs.readdirSync(sessionsDir)
-        .filter(f => f.endsWith('.json'))
-        .map(f => {
-          const filePath = path.join(sessionsDir, f);
-          const stat = fs.statSync(filePath);
-          try {
-            const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-            return {
-              id: f.replace('.json', ''),
-              modified: stat.mtime,
-              messageCount: data.messages?.length || 0,
-              cwd: data.cwd || 'Unknown',
-              summary: data.summary || data.messages?.[0]?.content?.slice(0, 50) || 'No summary',
-            };
-          } catch {
-            return null;
-          }
-        })
-        .filter(Boolean)
-        .sort((a, b) => b!.modified.getTime() - a!.modified.getTime())
+      const sessionFiles = fs.readdirSync(sessionsDir).filter(f => f.endsWith('.json'));
+
+      if (sessionFiles.length === 0) {
+        ctx.ui.addMessage('assistant', `No previous sessions found.\n\nSessions directory: ${sessionsDir}\n\nStart a conversation and it will be automatically saved.`);
+        return { success: false };
+      }
+
+      const sessions = sessionFiles
+        .map(f => parseSessionFile(path.join(sessionsDir, f)))
+        .filter((s): s is SessionFileData => s !== null)
+        .sort((a, b) => b.modified.getTime() - a.modified.getTime())
         .slice(0, 10);
 
       if (sessions.length === 0) {
-        ctx.ui.addMessage('assistant', 'No previous sessions found.');
+        ctx.ui.addMessage('assistant', 'No valid sessions found. Session files may be corrupted.');
         return { success: false };
       }
 
       if (args.length > 0) {
         // 恢复指定会话
         const sessionId = args[0];
-        const session = sessions.find(s => s!.id.startsWith(sessionId));
+        const session = sessions.find(s => s.id.startsWith(sessionId));
 
         if (session) {
-          ctx.ui.addMessage('assistant', `To resume session ${session!.id}, restart with:\n\nclaude --resume ${session!.id}`);
+          // 显示会话信息，提示用户使用命令行恢复
+          const info = `Session found: ${session.id.slice(0, 8)}
+
+Working directory: ${session.cwd}
+Messages: ${session.messageCount}
+Last modified: ${session.modified.toLocaleString()}
+
+To resume this session, restart Claude Code with:
+
+  claude --resume ${session.id}
+
+Or use the short form:
+
+  claude -r ${session.id.slice(0, 8)}`;
+
+          ctx.ui.addMessage('assistant', info);
           return { success: true };
         } else {
-          ctx.ui.addMessage('assistant', `Session not found: ${sessionId}`);
+          ctx.ui.addMessage('assistant', `Session not found: ${sessionId}\n\nUse /resume to see available sessions.`);
           return { success: false };
         }
       }
 
       // 列出所有会话
-      let sessionList = 'Recent Sessions:\n\n';
+      let sessionList = `📋 Recent Sessions (${sessions.length})\n\n`;
+      sessionList += '─'.repeat(60) + '\n';
+
       for (const session of sessions) {
-        if (!session) continue;
         const date = session.modified.toLocaleDateString();
-        const time = session.modified.toLocaleTimeString();
-        sessionList += `  ${session.id.slice(0, 8)}  ${date} ${time}  ${session.messageCount} msgs\n`;
-        sessionList += `    ${session.summary.slice(0, 60)}...\n\n`;
+        const time = session.modified.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const shortId = session.id.slice(0, 8);
+
+        sessionList += `\n  ${shortId}  │  ${date} ${time}  │  ${session.messageCount} msgs\n`;
+        sessionList += `  ${session.summary.slice(0, 55)}${session.summary.length > 55 ? '...' : ''}\n`;
       }
-      sessionList += 'Use /resume <session-id> to select a session';
+
+      sessionList += '\n' + '─'.repeat(60) + '\n';
+      sessionList += '\nUsage: /resume <session-id>\n';
+      sessionList += 'Example: /resume ' + sessions[0].id.slice(0, 8);
 
       ctx.ui.addMessage('assistant', sessionList);
       return { success: true };
