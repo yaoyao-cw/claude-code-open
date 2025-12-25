@@ -144,8 +144,15 @@ export class ConversationLoop {
       // 更新使用统计
       this.session.updateUsage(
         this.options.model || 'claude-sonnet-4-20250514',
-        response.usage.inputTokens + response.usage.outputTokens,
+        {
+          inputTokens: response.usage.inputTokens,
+          outputTokens: response.usage.outputTokens,
+          cacheReadInputTokens: 0,
+          cacheCreationInputTokens: 0,
+          webSearchRequests: 0,
+        },
         0, // 成本计算需要模型价格
+        0,
         0
       );
     }
