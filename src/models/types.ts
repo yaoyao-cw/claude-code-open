@@ -193,3 +193,87 @@ export class ThinkingNotSupportedError extends Error {
     this.name = 'ThinkingNotSupportedError';
   }
 }
+
+/**
+ * 配额类型
+ */
+export type QuotaType = 'cost' | 'tokens' | 'requests';
+
+/**
+ * 预警级别
+ */
+export type AlertLevel = 'info' | 'warning' | 'critical' | 'exceeded';
+
+/**
+ * 成本预警配置
+ */
+export interface CostAlert {
+  /** 阈值 (如 $1.00 或 50% 用量) */
+  threshold: number;
+  /** 触发动作 */
+  action: 'warn' | 'pause' | 'stop';
+  /** 预警消息 */
+  message: string;
+  /** 预警级别 */
+  level: AlertLevel;
+}
+
+/**
+ * 配额限制配置
+ */
+export interface QuotaLimit {
+  /** 成本限制 (USD) */
+  maxCost?: number;
+  /** Token 限制 */
+  maxTokens?: number;
+  /** 请求次数限制 */
+  maxRequests?: number;
+}
+
+/**
+ * 使用情况
+ */
+export interface UsageInfo {
+  /** 当前成本 (USD) */
+  currentCost: number;
+  /** 当前 tokens */
+  currentTokens: number;
+  /** 当前请求次数 */
+  currentRequests: number;
+  /** 成本限制 */
+  maxCost?: number;
+  /** Token 限制 */
+  maxTokens?: number;
+  /** 请求限制 */
+  maxRequests?: number;
+}
+
+/**
+ * 预算状态
+ */
+export interface BudgetStatus {
+  /** 配额类型 */
+  type: QuotaType;
+  /** 当前使用量 */
+  current: number;
+  /** 最大限制 */
+  limit: number;
+  /** 使用百分比 (0-100) */
+  percentage: number;
+  /** 剩余预算 */
+  remaining: number;
+  /** 预警级别 */
+  alertLevel: AlertLevel;
+  /** 是否超出限制 */
+  exceeded: boolean;
+}
+
+/**
+ * 阈值回调函数
+ */
+export type ThresholdCallback = (alert: CostAlert, status: BudgetStatus) => void;
+
+/**
+ * 限制超出回调函数
+ */
+export type LimitExceededCallback = (type: QuotaType, status: BudgetStatus) => void;

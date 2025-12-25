@@ -7,6 +7,7 @@ export { SystemPromptBuilder, systemPromptBuilder } from './builder.js';
 export { AttachmentManager, attachmentManager } from './attachments.js';
 export { PromptTemplates, CORE_IDENTITY, TOOL_GUIDELINES, PERMISSION_MODES } from './templates.js';
 export { PromptCache, promptCache } from './cache.js';
+export { PromptPreview, promptPreview } from './preview.js';
 export {
   PromptContext,
   Attachment,
@@ -14,3 +15,10 @@ export {
   SystemPromptOptions,
   PromptHashInfo,
 } from './types.js';
+export type {
+  PreviewOptions,
+  PromptSection,
+  AnalysisResult,
+  DiffResult,
+  DiffLine,
+} from './preview.js';
