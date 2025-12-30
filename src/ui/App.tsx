@@ -401,7 +401,9 @@ export const App: React.FC<AppProps> = ({
       setIsProcessing(true);
       setCurrentResponse('');
       setToolCalls([]);
-      setStreamBlocks([]); // 清空流式块
+
+      // 立即清空流式块和活动块ID（关键修复）
+      setStreamBlocks([]);
       setActiveTextBlockId(null);
       setConnectionStatus('connecting');
 
@@ -551,7 +553,7 @@ export const App: React.FC<AppProps> = ({
       setCurrentResponse(''); // 清空当前响应，因为已添加到消息列表
       // 注意：不清空streamBlocks，让它保留在当前会话中直到下一次提交
     },
-    [loop, showWelcome, addActivity, addMessage, handleSlashCommand] // 移除 currentResponse 依赖
+    [loop, showWelcome, addActivity, addMessage, handleSlashCommand, verbose] // 添加 verbose 依赖
   );
 
   // 初始 prompt
@@ -560,7 +562,7 @@ export const App: React.FC<AppProps> = ({
       setShowWelcome(false);
       handleSubmit(initialPrompt);
     }
-  }, []);
+  }, [handleSubmit, initialPrompt]); // 添加依赖项
 
   return (
     <Box flexDirection="column">
