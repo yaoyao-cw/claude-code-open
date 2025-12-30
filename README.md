@@ -1,5 +1,5 @@
 # Claude Code (Restored)
-
+The world needs an open-source Claude Code.
 A reverse-engineered restoration based on `@anthropic-ai/claude-code` v2.0.76.
 
 **For educational and research purposes only.**
