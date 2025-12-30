@@ -704,7 +704,7 @@ class ClaudeClient:
                 print("[ClaudeClient] Using beta.messages.create with betas:", betas)
                 print("[ClaudeClient] System prompt format:", "array" if isinstance(formatted_system, list) else "string")
 
-            return self._with_retry(lambda: self.client.beta.messages.create(request_params))
+            return self._with_retry(lambda: self.client.beta.messages.create(**request_params))
 
         if self.fallback_model:
             result = self._model_fallback.execute_with_fallback(
@@ -809,7 +809,7 @@ class ClaudeClient:
         thinking_tokens = 0
 
         try:
-            with self.client.beta.messages.stream(request_params) as stream:
+            with self.client.beta.messages.stream(**request_params) as stream:
                 for event in stream:
                     if event.type == "content_block_delta":
                         delta = event.delta
