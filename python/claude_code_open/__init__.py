@@ -1,4 +1,6 @@
 """Python API surface mirroring Claude Code session/context/tools exports."""
+from .auth import AuthConfig, AuthManager, init_auth
+from .config import ConfigManager, ConfigSourceInfo, ConfigKeySource, load_config
 from .context import (
     ContextConfig,
     ContextManager,
@@ -8,6 +10,17 @@ from .context import (
     estimate_tokens,
     estimate_total_tokens,
 )
+from .errors import (
+    AuthError,
+    ClaudeCodeError,
+    ClaudePermissionError,
+    ConfigError,
+    HookError,
+    PluginError,
+)
+from .hooks import HookConfig, HookRegistry, HookResult, run_pre_tool_use_hooks
+from .permissions import PermissionDecision, PermissionManager, PermissionRequest, requires_permission
+from .plugins import Plugin, PluginContext, PluginManager, PluginToolExecutor
 from .session import (
     SessionData,
     SessionManager,
@@ -28,11 +41,32 @@ from .tools import BaseTool, ToolRegistry, ToolStreamProcessor, format_tool_resu
 from .types import Message, ToolDefinition, ToolResult
 
 __all__ = [
+    "AuthConfig",
+    "AuthError",
+    "AuthManager",
+    "ClaudeCodeError",
+    "ClaudePermissionError",
+    "ConfigError",
+    "ConfigKeySource",
+    "ConfigManager",
+    "ConfigSourceInfo",
     "BaseTool",
     "ContextConfig",
     "ContextManager",
     "ContextStats",
+    "HookConfig",
+    "HookError",
+    "HookRegistry",
+    "HookResult",
     "Message",
+    "PermissionDecision",
+    "PermissionManager",
+    "PermissionRequest",
+    "Plugin",
+    "PluginContext",
+    "PluginError",
+    "PluginManager",
+    "PluginToolExecutor",
     "SessionData",
     "SessionManager",
     "SessionMetadata",
@@ -53,7 +87,11 @@ __all__ = [
     "format_tool_result",
     "generate_session_id",
     "generate_user_id",
+    "init_auth",
     "list_sessions",
+    "load_config",
     "load_session",
+    "requires_permission",
+    "run_pre_tool_use_hooks",
     "save_session",
 ]
