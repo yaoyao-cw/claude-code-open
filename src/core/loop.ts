@@ -575,10 +575,14 @@ export class ConversationLoop {
     while (turns < maxTurns) {
       turns++;
 
+      // 在发送请求前清理旧的持久化输出
+      const messages = this.session.getMessages();
+      const cleanedMessages = cleanOldPersistedOutputs(messages, 3);
+
       let response;
       try {
         response = await this.client.createMessage(
-          this.session.getMessages(),
+          cleanedMessages,
           this.tools,
           systemPrompt,
           {
@@ -640,10 +644,13 @@ export class ConversationLoop {
             console.log(chalk.gray(result.output || result.error || ''));
           }
 
+          // 使用格式化函数处理工具结果
+          const formattedContent = formatToolResult(toolName, result);
+
           toolResults.push({
             type: 'tool_result',
             tool_use_id: toolId,
-            content: result.success ? (result.output || '') : `Error: ${result.error}`,
+            content: formattedContent,
           });
         }
       }
@@ -758,13 +765,17 @@ Guidelines:
     while (turns < maxTurns) {
       turns++;
 
+      // 在发送请求前清理旧的持久化输出
+      const messages = this.session.getMessages();
+      const cleanedMessages = cleanOldPersistedOutputs(messages, 3);
+
       const assistantContent: ContentBlock[] = [];
       const toolCalls: Map<string, { name: string; input: string }> = new Map();
       let currentToolId = '';
 
       try {
         for await (const event of this.client.createMessageStream(
-          this.session.getMessages(),
+          cleanedMessages,
           this.tools,
           systemPrompt,
           {
@@ -836,10 +847,13 @@ Guidelines:
             input,
           });
 
+          // 使用格式化函数处理工具结果
+          const formattedContent = formatToolResult(tool.name, result);
+
           toolResults.push({
             type: 'tool_result',
             tool_use_id: id,
-            content: result.success ? (result.output || '') : `Error: ${result.error}`,
+            content: formattedContent,
           });
         } catch (err) {
           yield {
