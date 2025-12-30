@@ -117,11 +117,11 @@ export function processGitCommitCommand(command: string, modelId?: string): stri
     const originalMessage = heredocMatch[2].trim();
     const newMessage = addCommitAttribution(originalMessage, modelId);
 
-    // Replace the message in the heredoc
-    return command.replace(
-      heredocPattern,
-      `$1 "$(cat <<'EOF'\n${newMessage}\nEOF\n)"`
-    );
+    // Build the replacement heredoc with the new message
+    const flagMatch = heredocMatch[1]; // -m or --message
+    const replacement = flagMatch + ' "$(cat <<\'EOF\'\n' + newMessage + '\nEOF\n)"';
+
+    return command.replace(heredocPattern, replacement);
   }
 
   // If we can't parse the message format, return original command
