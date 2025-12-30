@@ -33,6 +33,10 @@ const SHORTCUTS: Shortcut[] = [
   { key: 'Alt+P', description: 'Switch model (opus → sonnet → haiku)', category: 'Model' },
   { key: 'Ctrl+M', description: 'Switch model (alternative)', category: 'Model' },
 
+  // 任务管理
+  { key: 'Ctrl+B', description: 'Move current task to background', category: 'Tasks' },
+  { key: 'Ctrl+T', description: 'Show/hide todos', category: 'Tasks' },
+
   // 命令
   { key: '/help', description: 'Show all commands', category: 'Commands' },
   { key: '/clear', description: 'Clear conversation', category: 'Commands' },
