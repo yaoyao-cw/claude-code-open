@@ -1,0 +1,707 @@
+/* ============================================
+   配置面板通用样式
+   用于 PermissionsConfigPanel 和 HooksConfigPanel
+   ============================================ */
+
+/* 配置面板容器 */
+.permissions-config-panel,
+.hooks-config-panel {
+  padding: 20px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+/* 配置面板头部 */
+.config-panel-header {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.config-panel-header h3 {
+  font-size: 24px;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.config-description {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* 配置区块 */
+.config-section {
+  margin-bottom: 32px;
+  padding: 20px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.config-section-title {
+  font-size: 18px;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.config-section-description {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+/* 设置项 */
+.setting-item {
+  margin-bottom: 20px;
+}
+
+.setting-item:last-child {
+  margin-bottom: 0;
+}
+
+.setting-label {
+  display: block;
+  font-size: 14px;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.setting-label-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-left: 8px;
+}
+
+/* 输入框 */
+.setting-input,
+.setting-select,
+.setting-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  transition: all 0.2s;
+}
+
+.setting-input:focus,
+.setting-select:focus,
+.setting-textarea:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  background: var(--bg-secondary);
+}
+
+.setting-textarea {
+  resize: vertical;
+  min-height: 80px;
+  line-height: 1.5;
+}
+
+/* 复选框 */
+.setting-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text-primary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.setting-checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--accent-primary);
+}
+
+/* 提示文本 */
+.setting-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+/* 配置操作按钮 */
+.config-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-color);
+  margin-top: 32px;
+}
+
+.config-btn {
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.config-btn-primary {
+  background: var(--accent-primary);
+  color: var(--bg-primary);
+}
+
+.config-btn-primary:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.config-btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.config-btn-secondary:hover {
+  background: var(--border-color);
+}
+
+.config-btn-danger-small {
+  padding: 6px 12px;
+  background: var(--accent-error);
+  color: white;
+  font-size: 12px;
+}
+
+.config-btn-danger-small:hover {
+  opacity: 0.9;
+}
+
+/* ============================================
+   Hooks 配置面板专用样式
+   ============================================ */
+
+/* Hooks 列表 */
+.hooks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Hook 项目 */
+.hook-item {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: all 0.2s;
+}
+
+.hook-item:hover {
+  border-color: var(--accent-primary);
+}
+
+/* Hook 头部 */
+.hook-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+.hook-header:hover {
+  background: var(--bg-secondary);
+}
+
+.hook-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.hook-icon {
+  font-size: 16px;
+  width: 24px;
+  text-align: center;
+}
+
+.hook-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hook-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.hook-id {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.hook-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hook-status {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.hook-configured {
+  background: rgba(158, 206, 106, 0.15);
+  color: var(--accent-success);
+}
+
+.hook-unconfigured {
+  background: rgba(86, 95, 137, 0.15);
+  color: var(--text-muted);
+}
+
+.hook-expand-icon {
+  font-size: 10px;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+
+/* Hook 内容 */
+.hook-content {
+  padding: 0 16px 16px 16px;
+  border-top: 1px solid var(--border-color);
+  animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hook-description {
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 12px 0;
+  line-height: 1.5;
+}
+
+/* Hook 编辑器 */
+.hook-editor {
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.hook-editor-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+/* Hook 操作按钮 */
+.hook-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+/* ============================================
+   响应式设计
+   ============================================ */
+
+@media (max-width: 768px) {
+  .permissions-config-panel,
+  .hooks-config-panel {
+    padding: 16px;
+  }
+
+  .config-panel-header h3 {
+    font-size: 20px;
+  }
+
+  .config-section {
+    padding: 16px;
+  }
+
+  .config-actions {
+    flex-direction: column;
+  }
+
+  .config-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .hook-editor-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============================================
+   深色模式优化
+   ============================================ */
+
+@media (prefers-color-scheme: dark) {
+  .setting-input::placeholder,
+  .setting-textarea::placeholder {
+    color: var(--text-muted);
+    opacity: 0.6;
+  }
+
+  .setting-input:disabled,
+  .setting-select:disabled,
+  .setting-textarea:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+/* ============================================
+   无障碍优化
+   ============================================ */
+
+.config-btn:focus-visible,
+.setting-input:focus-visible,
+.setting-select:focus-visible,
+.setting-textarea:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.hook-header:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+}
+
+/* ============================================
+   打印样式
+   ============================================ */
+
+@media print {
+  .config-actions,
+  .hook-actions {
+    display: none;
+  }
+
+  .config-section,
+  .hook-item {
+    break-inside: avoid;
+  }
+}
+
+/* ============================================
+   缓存管理面板样式
+   ============================================ */
+
+/* 缓存管理面板容器 */
+.cache-management-panel {
+  padding: 20px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+/* 缓存统计网格 */
+.cache-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+/* 缓存统计项 */
+.cache-stat-item {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: center;
+  transition: all 0.2s;
+}
+
+.cache-stat-item:hover {
+  border-color: var(--accent-primary);
+  transform: translateY(-2px);
+}
+
+.cache-stat-highlight {
+  background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+  border-color: var(--accent-primary);
+}
+
+.cache-stat-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.cache-stat-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.cache-stat-highlight .cache-stat-value {
+  color: var(--accent-primary);
+}
+
+/* 缓存统计为空 */
+.cache-stats-empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* 统计操作按钮 */
+.cache-stat-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-start;
+}
+
+/* 缓存操作网格 */
+.cache-actions-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 缓存操作项 */
+.cache-action-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  gap: 16px;
+  transition: all 0.2s;
+}
+
+.cache-action-item:hover {
+  border-color: var(--border-color);
+  background: var(--bg-secondary);
+}
+
+/* 缓存操作信息 */
+.cache-action-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.cache-action-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.cache-action-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.cache-action-desc-warning {
+  color: var(--accent-warning);
+}
+
+/* 路径输入区域 */
+.cache-path-input {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cache-path-input .config-label {
+  flex: 1;
+}
+
+.cache-path-input .config-btn {
+  align-self: flex-start;
+}
+
+/* 配置加载状态 */
+.config-loading {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* 配置输入 */
+.config-input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  transition: all 0.2s;
+}
+
+.config-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  background: var(--bg-secondary);
+}
+
+.config-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+/* 配置标签 */
+.config-label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.label-text {
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* 配置消息 */
+.config-message {
+  padding: 12px 16px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+
+.config-message-success {
+  background: rgba(158, 206, 106, 0.15);
+  color: var(--accent-success);
+  border: 1px solid var(--accent-success);
+}
+
+.config-message-error {
+  background: rgba(247, 118, 142, 0.15);
+  color: var(--accent-error);
+  border: 1px solid var(--accent-error);
+}
+
+/* 小号按钮 */
+.config-btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+/* 危险按钮 */
+.config-btn-danger {
+  background: var(--accent-error);
+  color: white;
+}
+
+.config-btn-danger:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.config-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* 缓存关于区域 */
+.cache-about {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.cache-about p {
+  margin-bottom: 12px;
+}
+
+.cache-about ul {
+  margin: 0;
+  padding-left: 24px;
+  margin-bottom: 12px;
+}
+
+.cache-about li {
+  margin-bottom: 4px;
+}
+
+/* 配置区块标题 */
+.config-section h4 {
+  font-size: 16px;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* 响应式优化 */
+@media (max-width: 768px) {
+  .cache-management-panel {
+    padding: 16px;
+  }
+
+  .cache-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .cache-action-item {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+  }
+
+  .cache-action-item .config-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .cache-stat-actions {
+    flex-direction: column;
+  }
+
+  .cache-stat-actions .config-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

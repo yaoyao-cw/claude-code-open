@@ -164,6 +164,7 @@ export const configCommand: SlashCommand = {
 │  Commands:                                          │
 │    /config                    Show this panel       │
 │    /config list               List all settings    │
+│    /config search <term>      Search settings      │
 │    /config get <key>          View a setting        │
 │    /config set <key> <value>  Set a value           │
 │    /config reset              Reset all settings   │
@@ -221,6 +222,71 @@ export const configCommand: SlashCommand = {
       listInfo += `╰────────────────────────────────────────────────────╯`;
 
       ctx.ui.addMessage('assistant', listInfo);
+      return { success: true };
+    }
+
+    // /config search <term> - 搜索配置项 (v2.1.6+)
+    if (action === 'search') {
+      const searchTerm = args.slice(1).join(' ').toLowerCase().trim();
+
+      if (!searchTerm) {
+        ctx.ui.addMessage('assistant', `Usage: /config search <term>
+
+Search through all configuration settings by key, description, or value.
+
+Examples:
+  /config search model
+  /config search token
+  /config search theme`);
+        return { success: false };
+      }
+
+      // 搜索匹配的配置项
+      const matchedItems = CONFIG_ITEMS.filter(item => {
+        const currentValue = config[item.key] ?? item.defaultValue;
+        const valueStr = typeof currentValue === 'object'
+          ? JSON.stringify(currentValue)
+          : String(currentValue);
+
+        return (
+          item.key.toLowerCase().includes(searchTerm) ||
+          item.description.toLowerCase().includes(searchTerm) ||
+          valueStr.toLowerCase().includes(searchTerm) ||
+          (item.example && item.example.toLowerCase().includes(searchTerm))
+        );
+      });
+
+      if (matchedItems.length === 0) {
+        ctx.ui.addMessage('assistant', `No settings match "${searchTerm}"
+
+Try a different search term, or use /config list to see all available settings.`);
+        return { success: true };
+      }
+
+      let searchResult = `╭─ Search Results for "${searchTerm}" ─────────────────╮\n`;
+      searchResult += `│  Found ${matchedItems.length} matching setting${matchedItems.length > 1 ? 's' : ''}                           │\n`;
+      searchResult += `│                                                    │\n`;
+
+      for (const item of matchedItems) {
+        const currentValue = config[item.key] ?? item.defaultValue;
+        const valueStr = typeof currentValue === 'object'
+          ? JSON.stringify(currentValue).substring(0, 20) + '...'
+          : currentValue.toString();
+
+        // 高亮匹配的部分
+        searchResult += `│  ${item.key.padEnd(20)} │\n`;
+        searchResult += `│    Current: ${valueStr.padEnd(36)} │\n`;
+        searchResult += `│    ${item.description.substring(0, 44).padEnd(44)} │\n`;
+        if (item !== matchedItems[matchedItems.length - 1]) {
+          searchResult += `│                                                    │\n`;
+        }
+      }
+
+      searchResult += `│                                                    │\n`;
+      searchResult += `│  Use /config get <key> to view full details       │\n`;
+      searchResult += `╰────────────────────────────────────────────────────╯`;
+
+      ctx.ui.addMessage('assistant', searchResult);
       return { success: true };
     }
 
@@ -1613,7 +1679,7 @@ export const privacySettingsCommand: SlashCommand = {
 │                                                     │
 │  For more information:                              │
 │    Consumer Terms: https://www.anthropic.com/legal  │
-│    Privacy Policy: https://console.anthropic.com/   │
+│    Privacy Policy: https://platform.claude.com/   │
 │                     settings/privacy                │
 │    Documentation:  https://code.claude.com/privacy  │
 │                                                     │
@@ -2461,6 +2527,67 @@ Check your terminal's documentation for custom key binding configuration.`;
     return { success: true };
   },
 };
+
+// /sandbox - 沙箱设置
+export const sandboxCommand: SlashCommand = {
+  name: 'sandbox',
+  description: 'Configure sandbox settings for tool execution',
+  usage: '/sandbox [status|enable|disable]',
+  category: 'config',
+  execute: (ctx: CommandContext): CommandResult => {
+    const { args } = ctx;
+    const action = args[0]?.toLowerCase();
+
+    // 检查当前沙箱状态
+    const sandboxEnabled = process.env.CLAUDE_CODE_ENABLE_SANDBOX === 'true';
+    const platform = process.platform;
+    const supportsSandbox = platform === 'linux'; // Bubblewrap 仅支持 Linux
+
+    if (!action || action === 'status') {
+      let sandboxInfo = `Sandbox Settings\n\n`;
+      sandboxInfo += `Status: ${sandboxEnabled ? '✓ Enabled' : '✗ Disabled'}\n`;
+      sandboxInfo += `Platform: ${platform}\n`;
+      sandboxInfo += `Sandbox Support: ${supportsSandbox ? '✓ Available (Linux with Bubblewrap)' : '✗ Not available (requires Linux)'}\n\n`;
+
+      if (!supportsSandbox) {
+        sandboxInfo += `Note: Sandbox isolation requires Linux with Bubblewrap installed.\n`;
+        sandboxInfo += `On Windows, consider using WSL for sandbox support.\n`;
+        sandboxInfo += `On macOS, sandbox features are limited.\n\n`;
+      }
+
+      sandboxInfo += `Commands:\n`;
+      sandboxInfo += `  /sandbox status   - Show current status\n`;
+      sandboxInfo += `  /sandbox enable   - Enable sandbox (Linux only)\n`;
+      sandboxInfo += `  /sandbox disable  - Disable sandbox\n\n`;
+
+      sandboxInfo += `Environment Variable:\n`;
+      sandboxInfo += `  CLAUDE_CODE_ENABLE_SANDBOX=true|false\n`;
+
+      ctx.ui.addMessage('assistant', sandboxInfo);
+      return { success: true };
+    }
+
+    if (action === 'enable') {
+      if (!supportsSandbox) {
+        ctx.ui.addMessage('assistant', `Cannot enable sandbox on ${platform}.\n\nSandbox requires Linux with Bubblewrap installed.`);
+        return { success: false };
+      }
+      process.env.CLAUDE_CODE_ENABLE_SANDBOX = 'true';
+      ctx.ui.addMessage('assistant', 'Sandbox enabled for this session.\n\nTo make permanent, set CLAUDE_CODE_ENABLE_SANDBOX=true in your environment.');
+      return { success: true };
+    }
+
+    if (action === 'disable') {
+      process.env.CLAUDE_CODE_ENABLE_SANDBOX = 'false';
+      ctx.ui.addMessage('assistant', 'Sandbox disabled for this session.');
+      return { success: true };
+    }
+
+    ctx.ui.addMessage('assistant', `Unknown action: ${action}\n\nUsage: /sandbox [status|enable|disable]`);
+    return { success: false };
+  },
+};
+
 // 注册所有配置命令
 export function registerConfigCommands(): void {
   commandRegistry.register(configCommand);
@@ -2477,4 +2604,5 @@ export function registerConfigCommands(): void {
   commandRegistry.register(statuslineCommand);
   commandRegistry.register(remoteEnvCommand);
   commandRegistry.register(terminalSetupCommand);
+  commandRegistry.register(sandboxCommand);
 }

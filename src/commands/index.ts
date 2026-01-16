@@ -10,11 +10,12 @@ import { registerGeneralCommands } from './general.js';
 import { registerSessionCommands } from './session.js';
 import { registerConfigCommands } from './config.js';
 import { registerAuthCommands } from './auth.js';
-import { registerMFACommands } from './mfa.js';
 import { registerToolsCommands } from './tools.js';
 import { registerUtilityCommands } from './utility.js';
 import { registerDevelopmentCommands } from './development.js';
 import { registerApiCommands } from './api.js';
+import { registerMapCommands } from './map.js';
+import { registerSettingsCommands } from './settings.js';
 
 let initialized = false;
 
@@ -28,11 +29,12 @@ export function initializeCommands(): void {
   registerSessionCommands();
   registerConfigCommands();
   registerAuthCommands();
-  registerMFACommands();
   registerToolsCommands();
   registerUtilityCommands();
   registerDevelopmentCommands();
   registerApiCommands();
+  registerMapCommands();
+  registerSettingsCommands();
 
   initialized = true;
 }
@@ -47,7 +49,7 @@ export async function executeCommand(
     config: any;
     ui: any;
   }
-): Promise<{ success: boolean; message?: string; action?: string }> {
+): Promise<import('./types.js').CommandResult> {
   // 确保命令已初始化
   initializeCommands();
 
@@ -81,8 +83,9 @@ export { registerGeneralCommands } from './general.js';
 export { registerSessionCommands } from './session.js';
 export { registerConfigCommands } from './config.js';
 export { registerAuthCommands } from './auth.js';
-export { registerMFACommands } from './mfa.js';
 export { registerToolsCommands } from './tools.js';
 export { registerUtilityCommands } from './utility.js';
 export { registerDevelopmentCommands } from './development.js';
 export { registerApiCommands } from './api.js';
+export { registerMapCommands } from './map.js';
+export { registerSettingsCommands } from './settings.js';

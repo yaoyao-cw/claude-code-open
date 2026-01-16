@@ -99,6 +99,13 @@ export interface BashInput {
    * without sandboxing.
    */
   dangerouslyDisableSandbox?: boolean;
+
+  /**
+   * Set to true to echo output to terminal in real-time.
+   * Only applies when run_in_background is true.
+   * Output will be streamed to stdout/stderr as the command runs.
+   */
+  echoOutput?: boolean;
 }
 
 /**
@@ -369,30 +376,8 @@ export interface WebFetchInput {
   prompt: string;
 }
 
-/**
- * Input parameters for the WebSearch tool
- *
- * Performs web searches with domain filtering.
- */
-export interface WebSearchInput {
-  /**
-   * The search query to use
-   * @example "TypeScript best practices 2024"
-   */
-  query: string;
-
-  /**
-   * Only include search results from these domains
-   * @example ["stackoverflow.com", "github.com"]
-   */
-  allowed_domains?: string[];
-
-  /**
-   * Never include search results from these domains
-   * @example ["pinterest.com", "spam.com"]
-   */
-  blocked_domains?: string[];
-}
+// WebSearchInput 已移除 - WebSearch 现在使用 Anthropic API Server Tool (web_search_20250305)
+// Server Tool 由 Anthropic 服务器执行，客户端不需要处理输入参数
 
 // ============================================================================
 // Todo Tool
@@ -723,23 +708,6 @@ export interface FileEdit {
   replace_all?: boolean;
 }
 
-/**
- * Input parameters for the MultiEdit tool
- *
- * Performs multiple file edits in a single operation.
- */
-export interface MultiEditInput {
-  /**
-   * List of edits to perform
-   */
-  edits: FileEdit[];
-
-  /**
-   * Description of the changes being made
-   */
-  description?: string;
-}
-
 // ============================================================================
 // Sandbox Tool
 // ============================================================================
@@ -770,40 +738,6 @@ export interface SandboxInput {
 }
 
 // ============================================================================
-// Tmux Tool
-// ============================================================================
-
-/**
- * Input parameters for Tmux operations
- */
-export interface TmuxInput {
-  /**
-   * The tmux operation to perform
-   */
-  operation: "create" | "send" | "capture" | "kill" | "list";
-
-  /**
-   * Session name
-   */
-  session?: string;
-
-  /**
-   * Window name or index
-   */
-  window?: string;
-
-  /**
-   * Pane index
-   */
-  pane?: string;
-
-  /**
-   * Command or text to send
-   */
-  command?: string;
-}
-
-// ============================================================================
 // Union Type
 // ============================================================================
 
@@ -824,7 +758,7 @@ export type ToolInputSchemas =
   | GlobInput
   | GrepInput
   | WebFetchInput
-  | WebSearchInput
+  // WebSearchInput 已移除 - 使用 Server Tool
   | TodoWriteInput
   | NotebookEditInput
   | McpInput
@@ -835,6 +769,4 @@ export type ToolInputSchemas =
   | SkillInput
   | ExitPlanModeInput
   | LSPInput
-  | MultiEditInput
-  | SandboxInput
-  | TmuxInput;
+  | SandboxInput;

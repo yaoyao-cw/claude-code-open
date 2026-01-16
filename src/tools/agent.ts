@@ -1,23 +1,26 @@
 /**
  * Agent 工具 (Task)
- * 子代理管理 - 参照官方 Claude Code CLI v2.0.76 实现
+ * 子代理管理 - 参照官方 Claude Code CLI v2.1.4 实现
  */
 
 import { BaseTool } from './base.js';
 import type { AgentInput, ToolResult, ToolDefinition } from '../types/index.js';
+import { isBackgroundTasksDisabled } from '../utils/env-check.js';
 import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { getBackgroundShell, isShellId } from './bash.js';
-import { ConversationLoop, type LoopOptions } from '../core/loop.js';
+// 使用动态导入避免循环依赖：agent.ts -> loop.ts -> tools/index.ts -> agent.ts
+import type { LoopOptions } from '../core/loop.js';
 import {
   runSubagentStartHooks,
   runSubagentStopHooks,
   type HookInput
 } from '../hooks/index.js';
 import type { Message } from '../types/index.js';
-import { GENERAL_PURPOSE_AGENT_PROMPT, EXPLORE_AGENT_PROMPT } from '../prompt/templates.js';
+import { GENERAL_PURPOSE_AGENT_PROMPT, EXPLORE_AGENT_PROMPT, CODE_ANALYZER_PROMPT, BLUEPRINT_WORKER_PROMPT } from '../prompt/templates.js';
+import { notificationManager, type AgentCompletionResult } from '../notifications/index.js';
 
 // 代理类型定义（参照官方）
 export interface AgentTypeDefinition {
@@ -26,9 +29,64 @@ export interface AgentTypeDefinition {
   tools?: string[];
   forkContext?: boolean;  // 是否访问父对话上下文
   permissionMode?: 'default' | 'plan' | 'acceptEdits' | 'bypassPermissions';
-  model?: string;
+  model?: string;         // 代理类型的默认模型
   description?: string;
   getSystemPrompt?: () => string;  // 系统提示词生成函数
+}
+
+// 模型别名类型（与官方 SDK 一致）
+export type ModelAlias = 'sonnet' | 'opus' | 'haiku' | 'inherit';
+
+// 全局父模型上下文（用于 inherit 继承）
+let parentModelContext: string | undefined;
+
+/**
+ * 设置父模型上下文
+ * 在主循环中设置，供子代理继承
+ */
+export function setParentModelContext(model: string | undefined): void {
+  parentModelContext = model;
+}
+
+/**
+ * 获取父模型上下文
+ */
+export function getParentModelContext(): string | undefined {
+  return parentModelContext;
+}
+
+/**
+ * 解析模型参数，处理 inherit 继承
+ * @param modelParam 模型参数 ('sonnet', 'opus', 'haiku', 'inherit', 或 undefined)
+ * @param agentDefaultModel 代理类型的默认模型（可选）
+ * @returns 解析后的模型名称
+ */
+export function resolveAgentModel(
+  modelParam: string | undefined,
+  agentDefaultModel?: string
+): string | undefined {
+  // 如果指定了 inherit，使用父模型
+  if (modelParam === 'inherit') {
+    return parentModelContext || agentDefaultModel;
+  }
+
+  // 如果明确指定了模型，使用指定的
+  if (modelParam && modelParam !== 'inherit') {
+    return modelParam;
+  }
+
+  // 如果代理类型有默认模型，使用代理默认模型
+  if (agentDefaultModel) {
+    return agentDefaultModel;
+  }
+
+  // 否则，继承父模型（如果有）
+  if (parentModelContext) {
+    return parentModelContext;
+  }
+
+  // 最终默认返回 undefined（让 ConversationLoop 使用它自己的默认值 'sonnet'）
+  return undefined;
 }
 
 // 内置代理类型
@@ -63,7 +121,32 @@ export const BUILT_IN_AGENT_TYPES: AgentTypeDefinition[] = [
     forkContext: false,
     // claude-code-guide agent 的系统提示词待后续添加
   },
+  {
+    agentType: 'blueprint-worker',
+    whenToUse: 'Worker agent for executing blueprint tasks with TDD methodology. This agent writes tests first, then implements code until tests pass. Only used by the blueprint system (Queen Agent).',
+    tools: ['*'],
+    forkContext: false,
+    getSystemPrompt: () => BLUEPRINT_WORKER_PROMPT,
+  },
+  {
+    agentType: 'code-analyzer',
+    whenToUse: 'Code analyzer agent for analyzing files and directories. Use this when you need to analyze code structure, dependencies, exports, and relationships. Returns structured JSON with semantic information.',
+    tools: ['Read', 'Grep', 'Glob', 'Bash','LSP'],
+    forkContext: false,
+    model: 'opus',  // 使用快速模型
+    getSystemPrompt: () => CODE_ANALYZER_PROMPT,
+  },
 ];
+
+// 兼容性导出：将数组转换为对象格式（用于测试）
+export const AGENT_TYPES: Record<string, { description: string; tools: string[] }> =
+  BUILT_IN_AGENT_TYPES.reduce((acc, agent) => {
+    acc[agent.agentType] = {
+      description: agent.whenToUse,
+      tools: agent.tools || ['*'],
+    };
+    return acc;
+  }, {} as Record<string, { description: string; tools: string[] }>);
 
 // 代理执行历史条目
 export interface AgentHistoryEntry {
@@ -94,6 +177,15 @@ export interface BackgroundAgent {
   metadata?: Record<string, any>;
   // 新增：对话历史
   messages?: Message[];
+  // 新增：进度追踪（对齐官方实现）
+  progress?: {
+    toolUseCount: number;
+    tokenCount: number;
+  };
+  lastActivity?: {
+    toolName: string;
+    input: any;
+  };
 }
 
 const backgroundAgents: Map<string, BackgroundAgent> = new Map();
@@ -267,6 +359,18 @@ export function getAgentTypeDefinition(agentType: string): AgentTypeDefinition |
 // 初始化时加载所有代理
 loadAllAgents();
 
+/**
+ * 生成后台任务相关提示文本（条件性）
+ * 根据 CLAUDE_CODE_DISABLE_BACKGROUND_TASKS 环境变量决定是否显示
+ */
+function getAgentBackgroundTasksPrompt(): string {
+  if (isBackgroundTasksDisabled()) {
+    return '';
+  }
+  return `
+- You can optionally run agents in the background using the run_in_background parameter. When an agent runs in the background, you will need to use TaskOutput to retrieve its results once it's done. You can continue to work while background agents run - When you need their results to continue you can use TaskOutput in blocking mode to pause and wait for their results.`;
+}
+
 export class TaskTool extends BaseTool<AgentInput, ToolResult> {
   name = 'Task';
   description = `Launch a new agent to handle complex, multi-step tasks autonomously.
@@ -288,8 +392,7 @@ When NOT to use the Task tool:
 Usage notes:
 - Always include a short description (3-5 words) summarizing what the agent will do
 - Launch multiple agents concurrently whenever possible, to maximize performance; to do that, use a single message with multiple tool uses
-- When the agent is done, it will return a single message back to you. The result returned by the agent is not visible to the user. To show the user the result, you should send a text message back to the user with a concise summary of the result.
-- You can optionally run agents in the background using the run_in_background parameter. When an agent runs in the background, you will need to use TaskOutput to retrieve its results once it's done. You can continue to work while background agents run - When you need their results to continue you can use TaskOutput in blocking mode to pause and wait for their results.
+- When the agent is done, it will return a single message back to you. The result returned by the agent is not visible to the user. To show the user the result, you should send a text message back to the user with a concise summary of the result.${getAgentBackgroundTasksPrompt()}
 - Agents can be resumed using the \`resume\` parameter by passing the agent ID from a previous invocation. When resumed, the agent continues with its full previous context preserved. When NOT resuming, each invocation starts fresh and you should provide a detailed task description with all necessary context.
 - When the agent is done, it will return a single message back to you along with its agent ID. You can use this ID to resume the agent later if needed for follow-up work.
 - Provide clear, detailed prompts so the agent can work autonomously and return exactly the information you need.
@@ -363,8 +466,8 @@ assistant: "I'm going to use the Task tool to launch the greeting-responder agen
         },
         model: {
           type: 'string',
-          enum: ['sonnet', 'opus', 'haiku'],
-          description: 'Optional model to use for this agent. If not specified, inherits from parent. Prefer haiku for quick, straightforward tasks to minimize cost and latency.',
+          enum: ['sonnet', 'opus', 'haiku', 'inherit'],
+          description: 'Optional model to use for this agent. Use "inherit" to explicitly inherit from parent. If not specified, inherits from parent. Prefer haiku for quick, straightforward tasks to minimize cost and latency.',
         },
         resume: {
           type: 'string',
@@ -523,6 +626,9 @@ assistant: "I'm going to use the Task tool to launch the greeting-responder agen
         agent.endTime = new Date();
         addAgentHistory(agent, 'completed', 'Agent completed successfully');
         saveAgentState(agent);
+
+        // v2.1.7: 发送代理完成通知，包含内联结果显示
+        this.sendAgentCompletionNotification(agent);
       })
       .catch((error) => {
         // 执行失败
@@ -531,6 +637,9 @@ assistant: "I'm going to use the Task tool to launch the greeting-responder agen
         agent.endTime = new Date();
         addAgentHistory(agent, 'failed', `Agent failed: ${agent.error}`);
         saveAgentState(agent);
+
+        // v2.1.7: 发送代理失败通知
+        this.sendAgentCompletionNotification(agent);
       });
   }
 
@@ -607,9 +716,20 @@ assistant: "I'm going to use the Task tool to launch the greeting-responder agen
         content: agent.prompt,
       });
 
+      // 解析模型参数，支持 inherit 继承
+      const resolvedModel = resolveAgentModel(agent.model, agentDef.model);
+
+      // 从配置管理器获取完整配置（包括环境变量）
+      const { configManager } = await import('../config/index.js');
+      const config = configManager.getAll();
+
+      // 类型断言：确保 TypeScript 正确识别配置类型
+      const fallbackModel = config.fallbackModel as string | undefined;
+      const debug = config.debug as boolean | undefined;
+
       // 构建 LoopOptions
       const loopOptions: LoopOptions = {
-        model: agent.model,
+        model: resolvedModel,
         maxTurns: 30,  // 限制最大轮次以避免无限循环
         verbose: process.env.CLAUDE_VERBOSE === 'true',
         permissionMode: agentDef.permissionMode || 'default',
@@ -618,9 +738,18 @@ assistant: "I'm going to use the Task tool to launch the greeting-responder agen
         workingDir: agent.workingDirectory,
         // 使用代理定义的系统提示词
         systemPrompt: agentDef.getSystemPrompt?.(),
+        // 传递 Extended Thinking 配置
+        thinking: config.thinking,
+        // 传递回退模型配置
+        fallbackModel,
+        // 传递调试配置
+        debug,
+        // 标记为 sub-agent，防止覆盖全局父模型上下文
+        isSubAgent: true,
       };
 
-      // 创建子对话循环
+      // 创建子对话循环（动态导入避免循环依赖）
+      const { ConversationLoop } = await import('../core/loop.js');
       const loop = new ConversationLoop(loopOptions);
 
       // 如果有初始消息上下文（forkContext），需要注入到session中
@@ -633,8 +762,43 @@ assistant: "I'm going to use the Task tool to launch the greeting-responder agen
         }
       }
 
-      // 执行代理任务（添加当前任务提示）
-      const response = await loop.processMessage(agent.prompt);
+      // 执行代理任务（使用 streaming API 以支持长时间运行的操作）
+      // 根据 Anthropic SDK 要求，超过10分钟的操作必须使用 streaming
+      let response = '';
+
+      // 初始化进度追踪（对齐官方实现）
+      if (!agent.progress) {
+        agent.progress = {
+          toolUseCount: 0,
+          tokenCount: 0
+        };
+      }
+
+      for await (const event of loop.processMessageStream(agent.prompt)) {
+        if (event.type === 'text' && event.content) {
+          response += event.content;
+          // 更新token计数（粗略估计，1 word ≈ 1.3 tokens）
+          agent.progress.tokenCount += Math.ceil(event.content.split(/\s+/).length * 1.3);
+          saveAgentState(agent);
+        } else if (event.type === 'tool_start') {
+          // 追踪工具使用（对齐官方实现）
+          agent.progress.toolUseCount++;
+          agent.lastActivity = {
+            toolName: event.toolName || 'unknown',
+            input: event.toolInput
+          };
+          saveAgentState(agent);
+        } else if (event.type === 'tool_end') {
+          // 工具执行完成，更新状态
+          saveAgentState(agent);
+        } else if (event.type === 'done') {
+          // Stream 完成
+          break;
+        } else if (event.type === 'interrupted') {
+          // 如果被中断，记录状态
+          throw new Error('Agent execution was interrupted');
+        }
+      }
 
       // 保存结果
       agent.result = {
@@ -654,6 +818,60 @@ assistant: "I'm going to use the Task tool to launch the greeting-responder agen
 
       throw error;
     }
+  }
+
+  /**
+   * 发送代理完成通知（v2.1.7 功能）
+   * 在代理执行完成后发送通知，包含内联的最终响应摘要
+   */
+  private sendAgentCompletionNotification(agent: BackgroundAgent): void {
+    // 计算执行时长
+    const duration = agent.endTime && agent.startTime
+      ? agent.endTime.getTime() - agent.startTime.getTime()
+      : undefined;
+
+    // 获取代理状态
+    const status: AgentCompletionResult['status'] =
+      agent.status === 'completed' ? 'completed' :
+      agent.status === 'failed' ? 'failed' : 'killed';
+
+    // 获取结果内容
+    const result = agent.result?.output || agent.error;
+
+    // 生成结果摘要（v2.1.6: 限制为最多3行）
+    let resultSummary: string | undefined;
+    if (result) {
+      // 移除多余空白行，提取有意义的内容，并限制为最多3行
+      const cleanedResult = result
+        .split('\n')
+        .filter((line: string) => line.trim())
+        .slice(0, 3)  // v2.1.6: 限制为最多3行
+        .join('\n')
+        .trim();
+      // 如果原始内容超过3行，添加省略号
+      const originalLineCount = result.split('\n').filter((line: string) => line.trim()).length;
+      const needsEllipsis = originalLineCount > 3;
+      resultSummary = cleanedResult.length > 500
+        ? cleanedResult.substring(0, 497) + '...'
+        : needsEllipsis
+          ? cleanedResult + '\n...'
+          : cleanedResult;
+    }
+
+    // 获取转录文件路径
+    const transcriptPath = getAgentFilePath(agent.id);
+
+    // 发送通知
+    notificationManager.notifyAgentCompletion({
+      agentId: agent.id,
+      agentType: agent.agentType,
+      description: agent.description,
+      status,
+      result,
+      resultSummary,
+      duration,
+      transcriptPath,
+    });
   }
 }
 
@@ -741,6 +959,16 @@ Usage notes:
 
     if (agent.currentStep !== undefined && agent.totalSteps !== undefined) {
       output.push(`Progress: ${agent.currentStep}/${agent.totalSteps} steps`);
+    }
+
+    // 显示进度追踪（对齐官方实现）
+    if (agent.progress) {
+      output.push(`Tools used: ${agent.progress.toolUseCount}`);
+      output.push(`Tokens: ${agent.progress.tokenCount}`);
+    }
+
+    if (agent.lastActivity) {
+      output.push(`Last tool: ${agent.lastActivity.toolName}`);
     }
 
     if (agent.workingDirectory) {
@@ -872,93 +1100,3 @@ Usage notes:
   }
 }
 
-export class ListAgentsTool extends BaseTool<{ status_filter?: string; include_completed?: boolean }, ToolResult> {
-  name = 'ListAgents';
-  description = `List all background agents with their current status.
-
-Usage notes:
-- Filter by status: running, completed, failed, paused
-- By default, excludes completed agents
-- Shows agent IDs that can be used with resume parameter`;
-
-  getInputSchema(): ToolDefinition['inputSchema'] {
-    return {
-      type: 'object',
-      properties: {
-        status_filter: {
-          type: 'string',
-          enum: ['running', 'completed', 'failed', 'paused'],
-          description: 'Filter agents by status',
-        },
-        include_completed: {
-          type: 'boolean',
-          description: 'Include completed agents (default: false)',
-        },
-      },
-    };
-  }
-
-  async execute(input: { status_filter?: string; include_completed?: boolean }): Promise<ToolResult> {
-    const agents = getBackgroundAgents();
-
-    if (agents.length === 0) {
-      return {
-        success: true,
-        output: 'No background agents found.',
-      };
-    }
-
-    // 过滤代理
-    let filteredAgents = agents;
-
-    if (input.status_filter) {
-      filteredAgents = filteredAgents.filter(a => a.status === input.status_filter);
-    }
-
-    if (!input.include_completed) {
-      filteredAgents = filteredAgents.filter(a => a.status !== 'completed');
-    }
-
-    if (filteredAgents.length === 0) {
-      return {
-        success: true,
-        output: 'No agents match the specified criteria.',
-      };
-    }
-
-    // 构建输出
-    const output = [];
-    output.push(`=== Background Agents (${filteredAgents.length}) ===\n`);
-
-    filteredAgents.forEach((agent, idx) => {
-      output.push(`${idx + 1}. Agent ID: ${agent.id}`);
-      output.push(`   Type: ${agent.agentType}`);
-      output.push(`   Status: ${agent.status}`);
-      output.push(`   Description: ${agent.description}`);
-      output.push(`   Started: ${agent.startTime.toISOString()}`);
-
-      if (agent.currentStep !== undefined && agent.totalSteps !== undefined) {
-        output.push(`   Progress: ${agent.currentStep}/${agent.totalSteps} steps`);
-      }
-
-      if (agent.endTime) {
-        const duration = agent.endTime.getTime() - agent.startTime.getTime();
-        output.push(`   Duration: ${(duration / 1000).toFixed(2)}s`);
-      }
-
-      if (agent.status === 'paused' || agent.status === 'failed') {
-        output.push(`   → Can be resumed with: resume="${agent.id}"`);
-      }
-
-      output.push('');
-    });
-
-    output.push('Use TaskOutput tool to get detailed information about a specific agent.');
-    output.push('Use Task tool with resume parameter to continue paused or failed agents.');
-
-    return {
-      success: true,
-      output: output.join('\n'),
-    };
-  }
-}

@@ -26,7 +26,7 @@ import { Spinner, MultiSpinner, StatusIndicator } from './ui/components';
 ]} />
 ```
 
-## 🎨 Animation Types (15+)
+## 🎨 Animation Types (16+)
 
 ```tsx
 type SpinnerType =
@@ -44,7 +44,8 @@ type SpinnerType =
   | 'clock'         // 🕐🕑🕒...🕛
   | 'arrow'         // ←↖↑↗→↘↓↙
   | 'bouncingBar'   // [    ] [=   ] [==  ]...
-  | 'bouncingBall'; // ( ●    ) (  ●   )...
+  | 'bouncingBall'  // ( ●    ) (  ●   )...
+  | 'terminalTitle' // ⠂⠐ (v2.1.7: 等宽字符，用于终端标题，避免抖动)
 ```
 
 ## 📊 Status Types (5)
@@ -281,4 +282,4 @@ export { SPINNER_TYPES, STATUS_ICONS, STATUS_COLORS }
 
 **Last Updated**: 2025-12-24
 **Component Version**: 2.0 (Enhanced)
-**Compatibility**: Claude Code CLI v2.0.76+
+**Compatibility**: Claude Code CLI v2.1.4+

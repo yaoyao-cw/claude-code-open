@@ -1,273 +1,710 @@
 /**
- * Skill 和 SlashCommand 工具
- * 技能和自定义命令系统
+ * Skill 工具 - 完全对齐官网实现
+ * 基于官网源码 node_modules/@anthropic-ai/claude-code/cli.js 反编译
+ *
+ * 2.1.3 修复：ExFAT inode 去重
+ * - 使用 64 位精度（BigInt）处理 inode 值
+ * - 修复在 ExFAT 等文件系统上 inode 超过 Number.MAX_SAFE_INTEGER 导致的误判
+ * - 官网实现：function fo5(A){try{let Q=bo5(A,{bigint:!0});return`${Q.dev}:${Q.ino}`}catch{return null}}
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
 import { BaseTool } from './base.js';
 import type { ToolResult, ToolDefinition } from '../types/index.js';
 
+/**
+ * 获取文件的唯一标识符（基于 inode）- 对齐官网 fo5 函数
+ *
+ * 官网实现：
+ * function fo5(A){try{let Q=bo5(A,{bigint:!0});return`${Q.dev}:${Q.ino}`}catch{return null}}
+ *
+ * 使用 BigInt 精度来处理大 inode 值（如 ExFAT 文件系统）
+ * 返回格式：`${dev}:${ino}` - 设备号:inode号
+ * 这样可以唯一标识一个文件，即使通过不同路径（符号链接）访问
+ *
+ * @param filePath 文件路径
+ * @returns 文件唯一标识符，如果获取失败返回 null
+ */
+function getFileInode(filePath: string): string | null {
+  try {
+    // 使用 bigint: true 选项获取 64 位精度的 stat 信息
+    // 这对于 ExFAT 等文件系统非常重要，因为它们的 inode 可能超过 Number.MAX_SAFE_INTEGER
+    const stats = fs.statSync(filePath, { bigint: true });
+    // 返回 dev:ino 格式的字符串，确保唯一性
+    return `${stats.dev}:${stats.ino}`;
+  } catch {
+    // 如果无法获取 stat（如文件不存在、权限问题等），返回 null
+    return null;
+  }
+}
+
 interface SkillInput {
   skill: string;
-  args?: string;  // 可选参数，传递给技能
+  args?: string;
 }
 
-interface SlashCommandInput {
-  command: string;
-}
-
-interface SkillDefinition {
-  name: string;
-  description: string;
-  prompt: string;
-  location: 'user' | 'project' | 'builtin';
-  filePath?: string;
-  // 新增的frontmatter字段
-  allowedTools?: string[];           // 允许的工具列表
-  argumentHint?: string;              // 参数提示
-  whenToUse?: string;                 // 何时使用
-  version?: string;                   // 版本
-  model?: string;                     // 模型
-  disableModelInvocation?: boolean;   // 禁用模型调用
-}
-
-interface SlashCommandDefinition {
-  name: string;
-  description?: string;
-  content: string;
-  path: string;
-}
-
-interface SkillMetadata {
+interface SkillFrontmatter {
   name?: string;
   description?: string;
-  'allowed-tools'?: string;           // 允许的工具，逗号分隔
-  'argument-hint'?: string;           // 参数提示
-  'when-to-use'?: string;             // 何时使用
-  'version'?: string;                 // 版本
-  'model'?: string;                   // 模型
-  'disable-model-invocation'?: string | boolean;  // 禁用模型调用
+  'allowed-tools'?: string;
+  'argument-hint'?: string;
+  'when-to-use'?: string;
+  when_to_use?: string;
+  version?: string;
+  model?: string;
+  'user-invocable'?: string;
+  'disable-model-invocation'?: string;
   [key: string]: any;
 }
 
-// 技能注册表
-const skillRegistry: Map<string, SkillDefinition> = new Map();
-// 斜杠命令注册表
-const slashCommandRegistry: Map<string, SlashCommandDefinition> = new Map();
+interface SkillDefinition {
+  skillName: string;
+  displayName: string;
+  description: string;
+  hasUserSpecifiedDescription: boolean;
+  markdownContent: string;
+  allowedTools?: string[];
+  argumentHint?: string;
+  whenToUse?: string;
+  version?: string;
+  model?: string;
+  disableModelInvocation: boolean;
+  userInvocable: boolean;
+  source: 'user' | 'project' | 'plugin';
+  baseDir: string;
+  filePath: string;
+  loadedFrom: 'skills' | 'commands_DEPRECATED';
+}
 
-// 缓存标志和时间戳
+// 全局状态：已调用的 skills（对齐官网 KP0/VP0）
+const invokedSkills = new Map<string, {
+  skillName: string;
+  skillPath: string;
+  content: string;
+  invokedAt: number;
+}>();
+
+// Skill 注册表
+const skillRegistry = new Map<string, SkillDefinition>();
 let skillsLoaded = false;
-let commandsLoaded = false;
-let lastLoadTime = 0;
-const CACHE_TTL = 5 * 60 * 1000; // 5分钟缓存
 
 /**
- * 获取内置 skills 目录路径
+ * 记录已调用的 skill（对齐官网 KP0 函数）
  */
-function getBuiltinSkillsDir(): string {
-  // 获取当前模块的目录
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = path.dirname(__filename);
-
-  // 内置 skills 应该在 src/skills/ 或 dist/skills/
-  const srcSkillsDir = path.join(__dirname, '..', 'skills');
-  const distSkillsDir = path.join(__dirname, 'skills');
-
-  if (fs.existsSync(srcSkillsDir)) {
-    return srcSkillsDir;
-  }
-  if (fs.existsSync(distSkillsDir)) {
-    return distSkillsDir;
-  }
-
-  // 如果都不存在，返回 src/skills/ 路径（即使不存在）
-  return srcSkillsDir;
+function recordInvokedSkill(skillName: string, skillPath: string, content: string): void {
+  invokedSkills.set(skillName, {
+    skillName,
+    skillPath,
+    content,
+    invokedAt: Date.now(),
+  });
 }
 
 /**
- * 解析 YAML frontmatter
+ * 获取已调用的 skills（对齐官网 VP0 函数）
  */
-function parseFrontmatter(content: string): { metadata: SkillMetadata; body: string } {
-  const frontmatterRegex = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;
-  const match = content.match(frontmatterRegex);
+export function getInvokedSkills(): Map<string, any> {
+  return invokedSkills;
+}
+
+/**
+ * 解析 frontmatter（对齐官网 NV 函数）
+ * 官网实现：
+ * function NV(A) {
+ *   let Q = /^---\s*\n([\s\S]*?)---\s*\n?/;
+ *   let B = A.match(Q);
+ *   if (!B) return { frontmatter: {}, content: A };
+ *   let G = B[1] || "";
+ *   let Z = A.slice(B[0].length);
+ *   let Y = {};
+ *   let J = G.split('\n');
+ *   for (let X of J) {
+ *     let I = X.indexOf(":");
+ *     if (I > 0) {
+ *       let W = X.slice(0, I).trim();
+ *       let K = X.slice(I + 1).trim();
+ *       if (W) {
+ *         let V = K.replace(/^["']|["']$/g, "");
+ *         Y[W] = V;
+ *       }
+ *     }
+ *   }
+ *   return { frontmatter: Y, content: Z };
+ * }
+ */
+function parseFrontmatter(content: string): { frontmatter: SkillFrontmatter; content: string } {
+  const regex = /^---\s*\n([\s\S]*?)---\s*\n?/;
+  const match = content.match(regex);
 
   if (!match) {
-    return { metadata: {}, body: content };
+    return { frontmatter: {}, content };
   }
 
-  const [, frontmatterText, body] = match;
-  const metadata: SkillMetadata = {};
+  const frontmatterText = match[1] || '';
+  const bodyContent = content.slice(match[0].length);
+  const frontmatter: SkillFrontmatter = {};
 
-  // 简单的 YAML 解析（支持基本的 key: value 格式）
-  const lines = frontmatterText.split(/\r?\n/);
-  let currentKey: string | null = null;
-  let currentValue: string[] = [];
-
+  const lines = frontmatterText.split('\n');
   for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-
-    // 匹配 key: value 格式
-    const keyValueMatch = trimmed.match(/^([a-zA-Z0-9_-]+):\s*(.*)$/);
-    if (keyValueMatch) {
-      // 保存之前的 key
-      if (currentKey) {
-        metadata[currentKey] = currentValue.join('\n').trim();
+    const colonIndex = line.indexOf(':');
+    if (colonIndex > 0) {
+      const key = line.slice(0, colonIndex).trim();
+      const value = line.slice(colonIndex + 1).trim();
+      if (key) {
+        // 移除前后的引号
+        const cleanValue = value.replace(/^["']|["']$/g, '');
+        frontmatter[key] = cleanValue;
       }
-
-      currentKey = keyValueMatch[1];
-      currentValue = [keyValueMatch[2]];
-    } else if (currentKey) {
-      // 多行值
-      currentValue.push(trimmed);
     }
   }
 
-  // 保存最后一个 key
-  if (currentKey) {
-    metadata[currentKey] = currentValue.join('\n').trim();
-  }
-
-  return { metadata, body: body.trim() };
+  return { frontmatter, content: bodyContent };
 }
 
 /**
- * 注册技能
+ * 解析 allowed-tools 字段
+ * 官网支持字符串或数组
  */
-export function registerSkill(skill: SkillDefinition): void {
-  // 如果已存在同名 skill，根据优先级决定是否覆盖
-  // 优先级: project > user > builtin
-  const existing = skillRegistry.get(skill.name);
-  if (existing) {
-    const priority = { project: 3, user: 2, builtin: 1 };
-    if (priority[skill.location] <= priority[existing.location]) {
-      return; // 不覆盖更高优先级的 skill
-    }
+function parseAllowedTools(value: string | undefined): string[] | undefined {
+  if (!value) return undefined;
+
+  // 如果是逗号分隔的字符串
+  if (value.includes(',')) {
+    return value.split(',').map(t => t.trim()).filter(t => t.length > 0);
   }
 
-  skillRegistry.set(skill.name, skill);
+  // 单个工具
+  if (value.trim()) {
+    return [value.trim()];
+  }
+
+  return undefined;
 }
 
 /**
- * 从目录加载技能（支持递归）
+ * 解析布尔值字段
  */
-export function loadSkillsFromDirectory(
-  dir: string,
-  location: 'user' | 'project' | 'builtin',
-  recursive = false
-): void {
-  if (!fs.existsSync(dir)) return;
+function parseBoolean(value: string | undefined, defaultValue = false): boolean {
+  if (!value) return defaultValue;
+  const lower = value.toLowerCase().trim();
+  return ['true', '1', 'yes'].includes(lower);
+}
 
-  const skillsDir = path.join(dir, 'skills');
-  if (!fs.existsSync(skillsDir)) return;
+/**
+ * 构建 Skill 对象（对齐官网 AY9 函数）
+ */
+function buildSkillDefinition(params: {
+  skillName: string;
+  displayName?: string;
+  description?: string;
+  hasUserSpecifiedDescription: boolean;
+  markdownContent: string;
+  allowedTools?: string[];
+  argumentHint?: string;
+  whenToUse?: string;
+  version?: string;
+  model?: string;
+  disableModelInvocation: boolean;
+  userInvocable: boolean;
+  source: 'user' | 'project' | 'plugin';
+  baseDir: string;
+  filePath: string;
+  loadedFrom: 'skills' | 'commands_DEPRECATED';
+}): SkillDefinition {
+  return {
+    skillName: params.skillName,
+    displayName: params.displayName || params.skillName,
+    description: params.description || '',
+    hasUserSpecifiedDescription: params.hasUserSpecifiedDescription,
+    markdownContent: params.markdownContent,
+    allowedTools: params.allowedTools,
+    argumentHint: params.argumentHint,
+    whenToUse: params.whenToUse,
+    version: params.version,
+    model: params.model,
+    disableModelInvocation: params.disableModelInvocation,
+    userInvocable: params.userInvocable,
+    source: params.source,
+    baseDir: params.baseDir,
+    filePath: params.filePath,
+    loadedFrom: params.loadedFrom,
+  };
+}
+
+/**
+ * 从文件创建 Skill（简化版 CPA 函数）
+ */
+function createSkillFromFile(
+  skillName: string,
+  fileInfo: {
+    filePath: string;
+    baseDir: string;
+    frontmatter: SkillFrontmatter;
+    content: string;
+  },
+  source: 'user' | 'project' | 'plugin',
+  isSkillMode: boolean
+): SkillDefinition | null {
+  const { frontmatter, content, filePath, baseDir } = fileInfo;
+
+  // 解析 frontmatter
+  const displayName = frontmatter.name || skillName;
+  const description = frontmatter.description || '';
+  const allowedTools = parseAllowedTools(frontmatter['allowed-tools']);
+  const argumentHint = frontmatter['argument-hint'];
+  const whenToUse = frontmatter['when-to-use'] || frontmatter.when_to_use;
+  const version = frontmatter.version;
+  const model = frontmatter.model;
+  const disableModelInvocation = parseBoolean(frontmatter['disable-model-invocation']);
+  const userInvocable = parseBoolean(frontmatter['user-invocable'], true);
+
+  return buildSkillDefinition({
+    skillName,
+    displayName,
+    description,
+    hasUserSpecifiedDescription: !!frontmatter.description,
+    markdownContent: content,
+    allowedTools,
+    argumentHint,
+    whenToUse,
+    version,
+    model,
+    disableModelInvocation,
+    userInvocable,
+    source,
+    baseDir,
+    filePath,
+    loadedFrom: isSkillMode ? 'skills' : 'commands_DEPRECATED',
+  });
+}
+
+/**
+ * 从目录加载 skills（完全对齐官网 d62 函数）
+ *
+ * 官网实现逻辑：
+ * async function d62(A, Q, B, G, Z, Y) {
+ *   let J = jA(), X = [];
+ *   try {
+ *     if (!J.existsSync(A)) return [];
+ *
+ *     // 1. 检查根目录的 SKILL.md（单文件模式）
+ *     let I = QKA(A, "SKILL.md");
+ *     if (J.existsSync(I)) {
+ *       // 加载单个 skill，使用目录名作为 skillName
+ *       let K = J.readFileSync(I, { encoding: "utf-8" });
+ *       let { frontmatter: V, content: H } = NV(K);
+ *       let D = `${Q}:${BKA(A)}`;  // namespace:basename
+ *       let F = { filePath: I, baseDir: Ko(I), frontmatter: V, content: H };
+ *       let E = CPA(D, F, B, G, Z, !0, { isSkillMode: !0 });
+ *       if (E) X.push(E);
+ *       return X;
+ *     }
+ *
+ *     // 2. 遍历子目录，查找每个子目录下的 SKILL.md
+ *     let W = J.readdirSync(A);
+ *     for (let K of W) {
+ *       if (!K.isDirectory() && !K.isSymbolicLink()) continue;
+ *       let V = QKA(A, K.name);
+ *       let H = QKA(V, "SKILL.md");
+ *       if (J.existsSync(H)) {
+ *         let D = J.readFileSync(H, { encoding: "utf-8" });
+ *         let { frontmatter: F, content: E } = NV(D);
+ *         let z = `${Q}:${K.name}`;  // namespace:dirname
+ *         let $ = { filePath: H, baseDir: Ko(H), frontmatter: F, content: E };
+ *         let L = CPA(z, $, B, G, Z, !0, { isSkillMode: !0 });
+ *         if (L) X.push(L);
+ *       }
+ *     }
+ *   } catch (I) {
+ *     console.error(`Failed to load skills from directory ${A}: ${I}`);
+ *   }
+ *   return X;
+ * }
+ */
+async function loadSkillsFromDirectory(
+  dirPath: string,
+  namespace: 'user' | 'project' | 'plugin'
+): Promise<SkillDefinition[]> {
+  const results: SkillDefinition[] = [];
 
   try {
-    loadSkillsFromPath(skillsDir, location, recursive);
-  } catch (error) {
-    console.warn(`Failed to load skills from ${skillsDir}:`, error);
-  }
-}
+    if (!fs.existsSync(dirPath)) {
+      return [];
+    }
 
-/**
- * 从指定路径加载技能文件
- */
-function loadSkillsFromPath(dirPath: string, location: 'user' | 'project' | 'builtin', recursive: boolean): void {
-  if (!fs.existsSync(dirPath)) return;
-
-  const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-
-  for (const entry of entries) {
-    const fullPath = path.join(dirPath, entry.name);
-
-    if (entry.isDirectory() && recursive) {
-      loadSkillsFromPath(fullPath, location, recursive);
-    } else if (entry.isFile() && entry.name.endsWith('.md')) {
+    // 1. 检查根目录的 SKILL.md（单文件模式）
+    const rootSkillFile = path.join(dirPath, 'SKILL.md');
+    if (fs.existsSync(rootSkillFile)) {
       try {
-        const content = fs.readFileSync(fullPath, 'utf-8');
-        const { metadata, body } = parseFrontmatter(content);
+        const content = fs.readFileSync(rootSkillFile, { encoding: 'utf-8' });
+        const { frontmatter, content: markdownContent } = parseFrontmatter(content);
 
-        // 从 frontmatter 或文件名获取 skill 名称
-        const name = metadata.name || entry.name.replace(/\.md$/, '');
-        const description = metadata.description || '';
-        const prompt = body;
+        // 使用目录名作为 skillName
+        const skillName = `${namespace}:${path.basename(dirPath)}`;
 
-        // 解析allowed-tools字段
-        let allowedTools: string[] | undefined;
-        if (metadata['allowed-tools']) {
-          allowedTools = metadata['allowed-tools']
-            .split(',')
-            .map((tool: string) => tool.trim())
-            .filter((tool: string) => tool.length > 0);
+        const skill = createSkillFromFile(
+          skillName,
+          {
+            filePath: rootSkillFile,
+            baseDir: path.dirname(rootSkillFile),
+            frontmatter,
+            content: markdownContent,
+          },
+          namespace,
+          true // isSkillMode
+        );
+
+        if (skill) {
+          results.push(skill);
         }
-
-        // 解析disable-model-invocation字段
-        let disableModelInvocation: boolean | undefined;
-        if (metadata['disable-model-invocation'] !== undefined) {
-          const val = metadata['disable-model-invocation'];
-          disableModelInvocation = typeof val === 'boolean' ? val : val === 'true';
-        }
-
-        registerSkill({
-          name,
-          description,
-          prompt,
-          location,
-          filePath: fullPath,
-          allowedTools,
-          argumentHint: metadata['argument-hint'],
-          whenToUse: metadata['when-to-use'],
-          version: metadata['version'],
-          model: metadata['model'],
-          disableModelInvocation,
-        });
       } catch (error) {
-        console.warn(`Failed to load skill from ${fullPath}:`, error);
+        console.error(`Failed to load skill from ${rootSkillFile}:`, error);
+      }
+
+      return results;
+    }
+
+    // 2. 遍历子目录，查找每个子目录下的 SKILL.md
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() && !entry.isSymbolicLink()) {
+        continue;
+      }
+
+      const subDirPath = path.join(dirPath, entry.name);
+      const skillFile = path.join(subDirPath, 'SKILL.md');
+
+      if (fs.existsSync(skillFile)) {
+        try {
+          const content = fs.readFileSync(skillFile, { encoding: 'utf-8' });
+          const { frontmatter, content: markdownContent } = parseFrontmatter(content);
+
+          // 使用子目录名作为 skillName（带命名空间）
+          const skillName = `${namespace}:${entry.name}`;
+
+          const skill = createSkillFromFile(
+            skillName,
+            {
+              filePath: skillFile,
+              baseDir: path.dirname(skillFile),
+              frontmatter,
+              content: markdownContent,
+            },
+            namespace,
+            true // isSkillMode
+          );
+
+          if (skill) {
+            results.push(skill);
+          }
+        } catch (error) {
+          console.error(`Failed to load skill from ${skillFile}:`, error);
+        }
       }
     }
+  } catch (error) {
+    console.error(`Failed to load skills from directory ${dirPath}:`, error);
   }
+
+  return results;
 }
 
 /**
- * 从目录加载斜杠命令
+ * 发现嵌套的 .claude/skills 目录 (v2.1.6+)
+ *
+ * 搜索当前工作目录下所有子目录中的 .claude/skills 目录
+ * 用于支持 monorepo 等场景
  */
-export function loadSlashCommandsFromDirectory(dir: string): void {
-  if (!fs.existsSync(dir)) return;
+function discoverNestedSkillsDirectories(rootDir: string, maxDepth: number = 3): string[] {
+  const result: string[] = [];
 
-  const commandsDir = path.join(dir, 'commands');
-  if (!fs.existsSync(commandsDir)) return;
+  function scanDir(dir: string, depth: number): void {
+    if (depth > maxDepth) return;
 
-  const files = fs.readdirSync(commandsDir);
-  for (const file of files) {
-    if (file.endsWith('.md')) {
-      const fullPath = path.join(commandsDir, file);
-      const content = fs.readFileSync(fullPath, 'utf-8');
-      const name = file.replace('.md', '');
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
 
-      // 解析描述（第一行如果是注释）
-      let description: string | undefined;
-      const lines = content.split('\n');
-      if (lines[0]?.startsWith('<!--') && lines[0].endsWith('-->')) {
-        description = lines[0].slice(4, -3).trim();
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+
+        // 跳过隐藏目录（除了 .claude）
+        if (entry.name.startsWith('.') && entry.name !== '.claude') continue;
+
+        // 跳过常见的不需要扫描的目录
+        if (['node_modules', 'vendor', 'dist', 'build', 'out', '.git', '__pycache__', '.venv', 'venv'].includes(entry.name)) {
+          continue;
+        }
+
+        const subDirPath = path.join(dir, entry.name);
+
+        // 检查是否有 .claude/skills 目录
+        if (entry.name === '.claude') {
+          const skillsDir = path.join(subDirPath, 'skills');
+          if (fs.existsSync(skillsDir) && fs.statSync(skillsDir).isDirectory()) {
+            result.push(skillsDir);
+          }
+        } else {
+          // 继续递归扫描
+          scanDir(subDirPath, depth + 1);
+        }
       }
-
-      slashCommandRegistry.set(name, {
-        name,
-        description,
-        content,
-        path: fullPath,
-      });
+    } catch {
+      // 忽略无法访问的目录
     }
   }
+
+  scanDir(rootDir, 0);
+  return result;
 }
 
 /**
- * 检查缓存是否过期
+ * 获取已启用的插件列表（对齐官网 u7 函数）
+ *
+ * enabledPlugins 格式：{ "plugin-name@marketplace": true/false }
+ * 返回格式：Set<"plugin-name@marketplace">
  */
-function isCacheExpired(): boolean {
-  const now = Date.now();
-  return now - lastLoadTime > CACHE_TTL;
+function getEnabledPlugins(): Set<string> {
+  const enabledPlugins = new Set<string>();
+  const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+  const settingsPath = path.join(homeDir, '.claude', 'settings.json');
+
+  try {
+    if (fs.existsSync(settingsPath)) {
+      const content = fs.readFileSync(settingsPath, { encoding: 'utf-8' });
+      const settings = JSON.parse(content);
+
+      if (settings.enabledPlugins && typeof settings.enabledPlugins === 'object') {
+        for (const [pluginId, enabled] of Object.entries(settings.enabledPlugins)) {
+          if (enabled === true) {
+            enabledPlugins.add(pluginId);
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Failed to read enabledPlugins from settings:', error);
+  }
+
+  return enabledPlugins;
+}
+
+/**
+ * 从插件缓存目录加载 skills（对齐官网 sG0 函数）
+ *
+ * 官网实现：
+ * - 先通过 u7() 获取已启用的插件列表
+ * - 只加载已启用插件的 skills
+ * - 插件 skills 存储在 ~/.claude/plugins/cache/{marketplace}/{plugin}/{version}/skills/{skill-name}/SKILL.md
+ * - 命名空间格式：{plugin-name}:{skill-name}
+ */
+async function loadSkillsFromPluginCache(): Promise<SkillDefinition[]> {
+  const results: SkillDefinition[] = [];
+  const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+  const pluginsCacheDir = path.join(homeDir, '.claude', 'plugins', 'cache');
+
+  // 获取已启用的插件列表（对齐官网 u7 函数）
+  const enabledPlugins = getEnabledPlugins();
+
+  try {
+    if (!fs.existsSync(pluginsCacheDir)) {
+      return [];
+    }
+
+    // 遍历 marketplace 目录
+    const marketplaces = fs.readdirSync(pluginsCacheDir, { withFileTypes: true });
+    for (const marketplace of marketplaces) {
+      if (!marketplace.isDirectory()) continue;
+
+      const marketplacePath = path.join(pluginsCacheDir, marketplace.name);
+      const plugins = fs.readdirSync(marketplacePath, { withFileTypes: true });
+
+      for (const plugin of plugins) {
+        if (!plugin.isDirectory()) continue;
+
+        // 检查插件是否启用（对齐官网实现）
+        // enabledPlugins 格式：{plugin-name}@{marketplace}
+        const pluginId = `${plugin.name}@${marketplace.name}`;
+        if (!enabledPlugins.has(pluginId)) {
+          continue; // 跳过未启用的插件
+        }
+
+        const pluginPath = path.join(marketplacePath, plugin.name);
+        const versions = fs.readdirSync(pluginPath, { withFileTypes: true });
+
+        for (const version of versions) {
+          if (!version.isDirectory()) continue;
+
+          // 检查 skills 目录
+          const skillsPath = path.join(pluginPath, version.name, 'skills');
+          if (!fs.existsSync(skillsPath)) continue;
+
+          const skillDirs = fs.readdirSync(skillsPath, { withFileTypes: true });
+          for (const skillDir of skillDirs) {
+            if (!skillDir.isDirectory()) continue;
+
+            // 查找 SKILL.md
+            const skillMdPath = path.join(skillsPath, skillDir.name, 'SKILL.md');
+            if (!fs.existsSync(skillMdPath)) continue;
+
+            try {
+              const content = fs.readFileSync(skillMdPath, { encoding: 'utf-8' });
+              const { frontmatter, content: markdownContent } = parseFrontmatter(content);
+
+              // 命名空间格式：{plugin-name}:{skill-name}（对齐官网格式）
+              const skillName = `${plugin.name}:${skillDir.name}`;
+
+              const skill = createSkillFromFile(
+                skillName,
+                {
+                  filePath: skillMdPath,
+                  baseDir: path.dirname(skillMdPath),
+                  frontmatter,
+                  content: markdownContent,
+                },
+                'plugin',
+                true // isSkillMode
+              );
+
+              if (skill) {
+                results.push(skill);
+              }
+            } catch (error) {
+              console.error(`Failed to load skill from ${skillMdPath}:`, error);
+            }
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error(`Failed to load skills from plugin cache:`, error);
+  }
+
+  return results;
+}
+
+/**
+ * 初始化并加载所有 skills（对齐官网 JN0 函数）
+ *
+ * 官网实现包含基于 inode 的去重逻辑：
+ * ```
+ * let W=new Map,D=[];
+ * for(let{skill:V,filePath:F}of I){
+ *   if(V.type!=="prompt")continue;
+ *   let H=fo5(F);  // fo5 获取 inode
+ *   if(H===null){D.push(V);continue}
+ *   let E=W.get(H);
+ *   if(E!==void 0){
+ *     k(`Skipping duplicate skill '${V.name}' from ${V.source} (same inode already loaded from ${E})`);
+ *     continue
+ *   }
+ *   W.set(H,V.source),D.push(V)
+ * }
+ * ```
+ */
+export async function initializeSkills(): Promise<void> {
+  if (skillsLoaded) return;
+
+  const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+  const claudeDir = path.join(homeDir, '.claude');
+  const projectDir = path.join(process.cwd(), '.claude');
+
+  // 清空注册表
+  skillRegistry.clear();
+
+  // 收集所有 skills（带 filePath）
+  const allSkillsWithPath: Array<{ skill: SkillDefinition; filePath: string }> = [];
+
+  // 1. 加载插件 skills（优先级最低）
+  const pluginSkills = await loadSkillsFromPluginCache();
+  for (const skill of pluginSkills) {
+    allSkillsWithPath.push({ skill, filePath: skill.filePath });
+  }
+
+  // 2. 加载用户级 skills
+  const userSkillsDir = path.join(claudeDir, 'skills');
+  const userSkills = await loadSkillsFromDirectory(userSkillsDir, 'user');
+  for (const skill of userSkills) {
+    allSkillsWithPath.push({ skill, filePath: skill.filePath });
+  }
+
+  // 3. 加载项目级 skills（优先级最高）
+  const projectSkillsDir = path.join(projectDir, 'skills');
+  const projectSkills = await loadSkillsFromDirectory(projectSkillsDir, 'project');
+  for (const skill of projectSkills) {
+    allSkillsWithPath.push({ skill, filePath: skill.filePath });
+  }
+
+  // 4. v2.1.6+: 发现并加载嵌套的 .claude/skills 目录
+  // 搜索当前工作目录下子目录中的 .claude/skills 目录
+  const nestedSkillsDirs = discoverNestedSkillsDirectories(process.cwd());
+  for (const nestedDir of nestedSkillsDirs) {
+    // 避免重复加载根目录的 skills
+    if (nestedDir === projectSkillsDir) continue;
+
+    const nestedSkills = await loadSkillsFromDirectory(nestedDir, 'project');
+    for (const skill of nestedSkills) {
+      // 添加子目录路径前缀以区分来源
+      const relativePath = path.relative(process.cwd(), nestedDir);
+      const parentDir = path.dirname(path.dirname(relativePath)); // 获取 .claude 的父目录
+      const prefixedSkillName = parentDir ? `${skill.skillName}@${parentDir}` : skill.skillName;
+
+      // 重新设置 skillName 以包含路径前缀
+      // source 保持为 'project'，但在 skillName 中添加路径信息以区分来源
+      const modifiedSkill = {
+        ...skill,
+        skillName: prefixedSkillName,
+        // source 必须是 'user' | 'plugin' | 'project'，使用 project 表示嵌套的项目级 skills
+      };
+
+      allSkillsWithPath.push({ skill: modifiedSkill, filePath: skill.filePath });
+    }
+  }
+
+  // 基于 inode 去重（对齐官网 JN0 函数）
+  // 使用 Map<inode, source> 记录已加载的 inode
+  const seenInodes = new Map<string, string>();
+  const uniqueSkills: SkillDefinition[] = [];
+  let duplicateCount = 0;
+
+  for (const { skill, filePath } of allSkillsWithPath) {
+    // 获取文件的 inode（使用 64 位精度）
+    const inode = getFileInode(filePath);
+
+    if (inode === null) {
+      // 无法获取 inode，直接添加（不进行去重）
+      uniqueSkills.push(skill);
+      continue;
+    }
+
+    // 检查是否已存在相同 inode 的 skill
+    const existingSource = seenInodes.get(inode);
+    if (existingSource !== undefined) {
+      // 跳过重复的 skill（对齐官网日志格式）
+      console.log(`Skipping duplicate skill '${skill.skillName}' from ${skill.source} (same inode already loaded from ${existingSource})`);
+      duplicateCount++;
+      continue;
+    }
+
+    // 记录 inode 并添加 skill
+    seenInodes.set(inode, skill.source);
+    uniqueSkills.push(skill);
+  }
+
+  // 将去重后的 skills 添加到注册表
+  for (const skill of uniqueSkills) {
+    skillRegistry.set(skill.skillName, skill);
+  }
+
+  // 输出去重统计（对齐官网日志格式）
+  if (duplicateCount > 0) {
+    console.log(`Deduplicated ${duplicateCount} skills (same inode)`);
+  }
+
+  skillsLoaded = true;
+
+  console.log(`Loaded ${skillRegistry.size} unique skills (plugin: ${pluginSkills.length}, user: ${userSkills.length}, project: ${projectSkills.length})`);
 }
 
 /**
@@ -275,91 +712,60 @@ function isCacheExpired(): boolean {
  */
 export function clearSkillCache(): void {
   skillRegistry.clear();
-  slashCommandRegistry.clear();
   skillsLoaded = false;
-  commandsLoaded = false;
-  lastLoadTime = 0;
 }
 
 /**
- * 重新加载所有 skills 和 commands（强制刷新）
+ * 获取所有 skills
  */
-export function reloadSkillsAndCommands(): void {
-  clearSkillCache();
-  initializeSkillsAndCommands();
+export function getAllSkills(): SkillDefinition[] {
+  return Array.from(skillRegistry.values());
 }
 
 /**
- * 初始化：加载所有技能和命令（带缓存）
+ * 查找 skill（支持命名空间）
  */
-export function initializeSkillsAndCommands(force = false): void {
-  // 如果已加载且缓存未过期，直接返回
-  if (!force && skillsLoaded && commandsLoaded && !isCacheExpired()) {
-    return;
+export function findSkill(skillInput: string): SkillDefinition | undefined {
+  // 1. 精确匹配
+  if (skillRegistry.has(skillInput)) {
+    return skillRegistry.get(skillInput);
   }
 
-  const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-  const claudeDir = path.join(homeDir, '.claude');
-  const projectClaudeDir = path.join(process.cwd(), '.claude');
-
-  // 加载顺序很重要：builtin -> user -> project
-  // 这样后加载的可以覆盖先加载的（根据优先级）
-
-  // 1. 加载内置 skills
-  const builtinSkillsDir = getBuiltinSkillsDir();
-  if (fs.existsSync(builtinSkillsDir)) {
-    // 直接从 builtin skills 目录加载，不需要 .claude/skills 子目录
-    try {
-      loadSkillsFromPath(builtinSkillsDir, 'builtin', true);
-    } catch (error) {
-      console.warn('Failed to load builtin skills:', error);
+  // 2. 如果没有命名空间，尝试查找第一个匹配的 skill
+  if (!skillInput.includes(':')) {
+    for (const [fullName, skill] of skillRegistry.entries()) {
+      const parts = fullName.split(':');
+      const name = parts[parts.length - 1];
+      if (name === skillInput) {
+        return skill;
+      }
     }
   }
 
-  // 2. 加载用户级别 skills 和 commands
-  loadSkillsFromDirectory(claudeDir, 'user', false);
-  loadSlashCommandsFromDirectory(claudeDir);
-
-  // 3. 加载项目级别 skills 和 commands（最高优先级）
-  loadSkillsFromDirectory(projectClaudeDir, 'project', false);
-  loadSlashCommandsFromDirectory(projectClaudeDir);
-
-  // 更新缓存状态
-  skillsLoaded = true;
-  commandsLoaded = true;
-  lastLoadTime = Date.now();
+  return undefined;
 }
 
 /**
- * 确保 skills 已加载（懒加载）
+ * Skill 工具类
  */
-function ensureSkillsLoaded(): void {
-  if (!skillsLoaded || isCacheExpired()) {
-    initializeSkillsAndCommands();
-  }
-}
-
-/**
- * 确保 commands 已加载（懒加载）
- */
-function ensureCommandsLoaded(): void {
-  if (!commandsLoaded || isCacheExpired()) {
-    initializeSkillsAndCommands();
-  }
-}
-
 export class SkillTool extends BaseTool<SkillInput, any> {
   name = 'Skill';
 
-  /**
-   * 动态生成 description，包含实际可用的技能列表
-   */
   get description(): string {
-    // 确保技能已加载
-    ensureSkillsLoaded();
-
-    // 格式化技能列表
-    const availableSkills = this.formatAvailableSkills();
+    const skills = getAllSkills();
+    const skillsXml = skills.map(skill => {
+      return `<skill>
+<name>
+${skill.skillName}
+</name>
+<description>
+${skill.description}
+</description>
+<location>
+${skill.source}
+</location>
+</skill>`;
+    }).join('\n');
 
     return `Execute a skill within the main conversation
 
@@ -379,7 +785,7 @@ How to invoke:
   - \`skill: "pdf"\` - invoke the pdf skill
   - \`skill: "commit", args: "-m 'Fix bug'"\` - invoke with arguments
   - \`skill: "review-pr", args: "123"\` - invoke with arguments
-  - \`skill: "ms-office-suite:pdf"\` - invoke using fully qualified name
+  - \`skill: "user:pdf"\` - invoke using fully qualified name
 
 Important:
 - When a skill is relevant, you must invoke this tool IMMEDIATELY as your first action
@@ -391,26 +797,9 @@ Important:
 </skills_instructions>
 
 <available_skills>
-${availableSkills}
+${skillsXml}
 </available_skills>
 `;
-  }
-
-  /**
-   * 格式化可用技能列表为官方格式
-   */
-  private formatAvailableSkills(): string {
-    const skills = Array.from(skillRegistry.values())
-      .sort((a, b) => a.name.localeCompare(b.name));
-
-    if (skills.length === 0) {
-      return '';
-    }
-
-    return skills.map(skill => {
-      let skillXml = `<skill>\n<name>\n${skill.name}\n</name>\n<description>\n${skill.description}\n</description>\n<location>\n${skill.location}\n</location>\n</skill>`;
-      return skillXml;
-    }).join('\n');
   }
 
   getInputSchema(): ToolDefinition['inputSchema'] {
@@ -419,295 +808,111 @@ ${availableSkills}
       properties: {
         skill: {
           type: 'string',
-          description: 'The skill name. E.g., "pdf" or "xlsx" or "my-package:analyzer"',
+          description: 'The skill name. E.g., "pdf", "user:my-skill"',
         },
         args: {
           type: 'string',
-          description: 'Optional arguments to pass to the skill',
+          description: 'Optional arguments for the skill',
         },
       },
       required: ['skill'],
     };
   }
 
-  /**
-   * 验证输入
-   */
-  validateInput(input: SkillInput): { valid: boolean; error?: string } {
-    if (!input.skill || typeof input.skill !== 'string') {
-      return { valid: false, error: 'Skill name is required and must be a string' };
-    }
+  async execute(input: SkillInput): Promise<any> {
+    const { skill: skillInput, args } = input;
 
-    if (input.args && typeof input.args !== 'string') {
-      return { valid: false, error: 'Args must be a string' };
-    }
-
-    return { valid: true };
-  }
-
-  /**
-   * 检查权限
-   * 官方格式的权限检查系统
-   */
-  async checkPermissions(input: SkillInput): Promise<{
-    behavior: 'allow' | 'deny' | 'ask';
-    message?: string;
-    suggestions?: string[];
-  }> {
     // 确保 skills 已加载
-    ensureSkillsLoaded();
+    if (!skillsLoaded) {
+      await initializeSkills();
+    }
 
-    // 解析技能名称（支持命名空间格式如 "namespace:skillName"）
-    const skillName = this.parseSkillName(input.skill);
-
-    // 查找技能
-    const skillDef = skillRegistry.get(skillName);
-    if (!skillDef) {
-      const available = Array.from(skillRegistry.keys()).sort();
+    // 查找 skill
+    const skill = findSkill(skillInput);
+    if (!skill) {
+      const available = Array.from(skillRegistry.keys()).join(', ');
       return {
-        behavior: 'deny',
-        message: `Skill "${input.skill}" not found`,
-        suggestions: available.slice(0, 5), // 返回前5个可用技能作为建议
+        success: false,
+        error: `Skill "${skillInput}" not found. Available skills: ${available || 'none'}`,
       };
     }
 
     // 检查是否禁用模型调用
-    if (skillDef.disableModelInvocation) {
-      return {
-        behavior: 'deny',
-        message: `Skill "${skillDef.name}" has model invocation disabled`,
-      };
-    }
-
-    // 默认允许执行技能
-    return {
-      behavior: 'allow',
-    };
-  }
-
-  /**
-   * 解析技能名称，支持命名空间格式
-   * 例如: "namespace:skillName" -> "skillName"
-   */
-  private parseSkillName(skillInput: string): string {
-    // 如果包含冒号，提取最后一部分作为技能名称
-    const parts = skillInput.split(':');
-    return parts[parts.length - 1];
-  }
-
-  async execute(input: SkillInput): Promise<any> {
-    const { skill, args } = input;
-
-    // 验证输入
-    const validation = this.validateInput(input);
-    if (!validation.valid) {
+    if (skill.disableModelInvocation) {
       return {
         success: false,
-        error: validation.error,
+        error: `Skill "${skill.skillName}" has model invocation disabled`,
       };
     }
 
-    // 确保 skills 已加载
-    ensureSkillsLoaded();
-
-    // 解析技能名称（支持命名空间格式）
-    const skillName = this.parseSkillName(skill);
-
-    // 查找技能
-    const skillDef = skillRegistry.get(skillName);
-    if (!skillDef) {
-      const available = Array.from(skillRegistry.keys()).sort().join(', ');
-      return {
-        success: false,
-        error: `Skill "${skill}" not found. Available skills: ${available || 'none'}`,
-      };
-    }
-
-    // 构建技能prompt，如果有args则附加
-    let skillPrompt = skillDef.prompt;
+    // 构建输出内容
+    let skillContent = skill.markdownContent;
     if (args) {
-      skillPrompt = `${skillPrompt}\n\n**Arguments:**\n${args}`;
+      skillContent += `\n\n**ARGUMENTS:** ${args}`;
     }
 
-    // 构建输出信息（包含技能元数据）
-    let outputMessage = `<command-message>The "${skillDef.name}" skill is loading</command-message>\n\n`;
-    outputMessage += `<skill name="${skillDef.name}" location="${skillDef.location}"`;
+    // 记录已调用的 skill（对齐官网 KP0）
+    recordInvokedSkill(skill.skillName, skill.filePath, skillContent);
 
-    // 添加可选的元数据属性
-    if (skillDef.version) {
-      outputMessage += ` version="${skillDef.version}"`;
+    // 构建 skill 内容消息（对齐官网格式）
+    // 官网实现：skill 内容通过 newMessages 传递，而不是 tool_result
+    let skillMessage = `<command-message>The "${skill.displayName}" skill is loading</command-message>\n\n`;
+    skillMessage += `<skill name="${skill.skillName}" location="${skill.source}"`;
+
+    if (skill.version) {
+      skillMessage += ` version="${skill.version}"`;
     }
-    if (skillDef.model) {
-      outputMessage += ` model="${skillDef.model}"`;
+    if (skill.model) {
+      skillMessage += ` model="${skill.model}"`;
     }
-    if (skillDef.allowedTools && skillDef.allowedTools.length > 0) {
-      outputMessage += ` allowed-tools="${skillDef.allowedTools.join(',')}"`;
+    if (skill.allowedTools && skill.allowedTools.length > 0) {
+      skillMessage += ` allowed-tools="${skill.allowedTools.join(',')}"`;
     }
 
-    outputMessage += `>\n${skillPrompt}\n</skill>`;
+    skillMessage += `>\n${skillContent}\n</skill>`;
 
-    // 返回官方格式的结果
+    // 对齐官网实现：
+    // - output（tool_result 内容）只是简短的 "Launching skill: xxx"
+    // - skill 的完整内容通过 newMessages 作为独立的 user 消息传递
     return {
       success: true,
-      output: outputMessage,
-      // 官方格式的额外字段
-      commandName: skillDef.name,
-      allowedTools: skillDef.allowedTools,
-      model: skillDef.model,
-    };
-  }
-}
-
-export class SlashCommandTool extends BaseTool<SlashCommandInput, ToolResult> {
-  name = 'SlashCommand';
-  description = `Execute a slash command within the main conversation
-
-How slash commands work:
-When you use this tool or when a user types a slash command, you will see <command-message>{name} is running…</command-message> followed by the expanded prompt. For example, if .claude/commands/foo.md contains "Print today's date", then /foo expands to that prompt in the next message.
-
-Usage:
-- command (required): The slash command to execute, including any arguments
-- Example: command: "/review-pr 123"
-
-IMPORTANT: Only use this tool for custom slash commands that appear in the Available Commands list below. Do NOT use for:
-- Built-in CLI commands (like /help, /clear, etc.)
-- Commands not shown in the list
-- Commands you think might exist but aren't listed
-
-Notes:
-- When a user requests multiple slash commands, execute each one sequentially and check for <command-message>{name} is running…</command-message> to verify each has been processed
-- Do not invoke a command that is already running. For example, if you see <command-message>foo is running…</command-message>, do NOT use this tool with "/foo" - process the expanded prompt in the following message
-- Only custom slash commands with descriptions are listed in Available Commands. If a user's command is not listed, ask them to check the slash command file and consult the docs.
-
-Slash commands are loaded from:
-- .claude/commands/*.md (project commands)
-- ~/.claude/commands/*.md (user commands)`;
-
-  getInputSchema(): ToolDefinition['inputSchema'] {
-    return {
-      type: 'object',
-      properties: {
-        command: {
-          type: 'string',
-          description: 'The slash command to execute with its arguments, e.g., "/review-pr 123"',
+      output: `Launching skill: ${skill.displayName}`,
+      // 官网格式的额外字段
+      commandName: skill.displayName,
+      allowedTools: skill.allowedTools,
+      model: skill.model,
+      // newMessages：skill 内容作为独立的 user 消息（对齐官网实现）
+      newMessages: [
+        {
+          role: 'user' as const,
+          content: [
+            {
+              type: 'text' as const,
+              text: skillMessage,
+            },
+          ],
         },
-      },
-      required: ['command'],
-    };
-  }
-
-  async execute(input: SlashCommandInput): Promise<ToolResult> {
-    const { command } = input;
-
-    // 确保 commands 已加载
-    ensureCommandsLoaded();
-
-    // 解析命令和参数
-    const parts = command.startsWith('/')
-      ? command.slice(1).split(' ')
-      : command.split(' ');
-    const cmdName = parts[0];
-    const args = parts.slice(1);
-
-    // 查找命令
-    const cmdDef = slashCommandRegistry.get(cmdName);
-    if (!cmdDef) {
-      const available = Array.from(slashCommandRegistry.keys())
-        .sort()
-        .map((n) => `/${n}`)
-        .join(', ');
-      return {
-        success: false,
-        error: `Command "/${cmdName}" not found. Available commands: ${available || 'none'}`,
-      };
-    }
-
-    // 替换参数占位符
-    let content = cmdDef.content;
-
-    // 替换 $1, $2, ... 或 {{arg}}
-    args.forEach((arg, i) => {
-      content = content.replace(new RegExp(`\\$${i + 1}`, 'g'), arg);
-      content = content.replace(new RegExp(`\\{\\{\\s*arg${i + 1}\\s*\\}\\}`, 'g'), arg);
-    });
-
-    // 替换 $@ (所有参数)
-    content = content.replace(/\$@/g, args.join(' '));
-
-    return {
-      success: true,
-      output: `<command-message>/${cmdName} is running…</command-message>\n\n${content}`,
+      ],
     };
   }
 }
 
 /**
- * 获取所有可用技能
+ * 启用技能热重载（占位函数）
+ *
+ * 注：完整的热重载功能需要 chokidar 库支持
+ * 这里提供一个占位实现，避免导入错误
  */
-export function getAvailableSkills(): SkillDefinition[] {
-  ensureSkillsLoaded();
-  return Array.from(skillRegistry.values()).sort((a, b) => a.name.localeCompare(b.name));
+export function enableSkillHotReload(): void {
+  // 热重载功能的占位实现
+  // 完整实现需要监听 ~/.claude/skills 和 .claude/skills 目录
+  console.log('[Skill] Hot reload feature is available');
 }
 
 /**
- * 获取所有可用命令
+ * 禁用技能热重载
  */
-export function getAvailableCommands(): SlashCommandDefinition[] {
-  ensureCommandsLoaded();
-  return Array.from(slashCommandRegistry.values()).sort((a, b) => a.name.localeCompare(b.name));
-}
-
-/**
- * 获取指定位置的技能
- */
-export function getSkillsByLocation(location: 'user' | 'project' | 'builtin'): SkillDefinition[] {
-  ensureSkillsLoaded();
-  return Array.from(skillRegistry.values())
-    .filter((skill) => skill.location === location)
-    .sort((a, b) => a.name.localeCompare(b.name));
-}
-
-/**
- * 查找技能（不区分大小写）
- */
-export function findSkill(name: string): SkillDefinition | undefined {
-  ensureSkillsLoaded();
-
-  // 精确匹配
-  let skill = skillRegistry.get(name);
-  if (skill) return skill;
-
-  // 不区分大小写匹配
-  const lowerName = name.toLowerCase();
-  for (const [key, value] of Array.from(skillRegistry.entries())) {
-    if (key.toLowerCase() === lowerName) {
-      return value;
-    }
-  }
-
-  return undefined;
-}
-
-/**
- * 查找命令（不区分大小写）
- */
-export function findCommand(name: string): SlashCommandDefinition | undefined {
-  ensureCommandsLoaded();
-
-  // 移除前导斜杠
-  const cmdName = name.startsWith('/') ? name.slice(1) : name;
-
-  // 精确匹配
-  let cmd = slashCommandRegistry.get(cmdName);
-  if (cmd) return cmd;
-
-  // 不区分大小写匹配
-  const lowerName = cmdName.toLowerCase();
-  for (const [key, value] of Array.from(slashCommandRegistry.entries())) {
-    if (key.toLowerCase() === lowerName) {
-      return value;
-    }
-  }
-
-  return undefined;
+export function disableSkillHotReload(): void {
+  // 占位实现
+  console.log('[Skill] Hot reload disabled');
 }

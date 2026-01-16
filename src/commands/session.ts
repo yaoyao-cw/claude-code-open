@@ -2,12 +2,14 @@
  * 会话命令 - resume, context, compact, rewind
  */
 
+import React from 'react';
 import type { SlashCommand, CommandContext, CommandResult } from './types.js';
 import { commandRegistry } from './registry.js';
 import { contextManager, type ContextStats } from '../context/index.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { ResumeSession } from '../ui/components/ResumeSession.js';
 
 // 获取会话目录
 const getSessionsDir = () => path.join(os.homedir(), '.claude', 'sessions');
@@ -119,7 +121,7 @@ function parseSessionFile(filePath: string): SessionFileData | null {
   }
 }
 
-// /resume - 恢复会话 (增强版 - 支持搜索、编号、预览)
+// /resume - 恢复会话 (官方 local-jsx 类型 - 返回交互式 UI 组件)
 export const resumeCommand: SlashCommand = {
   name: 'resume',
   aliases: ['r'],
@@ -133,6 +135,31 @@ export const resumeCommand: SlashCommand = {
     if (!fs.existsSync(sessionsDir)) {
       ctx.ui.addMessage('assistant', `No previous sessions found.\n\nSessions are saved to: ${sessionsDir}\n\nStart a conversation and it will be automatically saved.`);
       return { success: false };
+    }
+
+    // 官方风格：无参数时返回交互式 JSX 组件
+    if (args.length === 0) {
+      // 检查是否有会话文件
+      const sessionFiles = fs.readdirSync(sessionsDir).filter(f => f.endsWith('.json'));
+      if (sessionFiles.length === 0) {
+        ctx.ui.addMessage('assistant', `No previous sessions found.\n\nSessions directory: ${sessionsDir}\n\nStart a conversation and it will be automatically saved.`);
+        return { success: false };
+      }
+
+      // 返回 JSX 组件，由 App.tsx 处理显示
+      return {
+        success: true,
+        action: 'showJsx',
+        jsx: React.createElement(ResumeSession, {
+          key: Date.now(),
+          onDone: (message?: string) => {
+            if (message) {
+              ctx.ui.addMessage('assistant', message);
+            }
+          },
+        }),
+        shouldHidePromptInput: true,
+      };
     }
 
     try {
@@ -573,28 +600,109 @@ Not enough new messages to compact. Use /compact --force to force compaction any
 export const rewindCommand: SlashCommand = {
   name: 'rewind',
   aliases: ['undo'],
-  description: 'Rewind conversation to a previous state',
-  usage: '/rewind [steps]',
+  description: 'Rewind conversation and/or code to a previous state',
+  usage: '/rewind [--code | --conversation | --both] [message-index]',
   category: 'session',
-  execute: (ctx: CommandContext): CommandResult => {
-    const { args } = ctx;
-    const steps = args.length > 0 ? parseInt(args[0], 10) : 1;
+  execute: async (ctx: CommandContext): Promise<CommandResult> => {
+    const { args, session } = ctx;
 
-    if (isNaN(steps) || steps < 1) {
-      ctx.ui.addMessage('assistant', 'Invalid number of steps. Usage: /rewind [steps]');
+    // 解析参数
+    let mode: 'code' | 'conversation' | 'both' = 'both';
+    let messageIndex: number | undefined;
+
+    for (const arg of args) {
+      if (arg === '--code' || arg === '-c') {
+        mode = 'code';
+      } else if (arg === '--conversation' || arg === '--conv') {
+        mode = 'conversation';
+      } else if (arg === '--both' || arg === '-b') {
+        mode = 'both';
+      } else if (!isNaN(parseInt(arg, 10))) {
+        messageIndex = parseInt(arg, 10);
+      }
+    }
+
+    // 显示帮助信息
+    if (args.includes('--help') || args.includes('-h')) {
+      ctx.ui.addMessage('assistant', `Rewind Command
+
+Usage: /rewind [options] [message-index]
+
+Options:
+  --code, -c         Rewind code changes only (restore files)
+  --conversation     Rewind conversation only (remove messages)
+  --both, -b         Rewind both code and conversation (default)
+  --help, -h         Show this help message
+
+Examples:
+  /rewind                    Show rewind UI (or press ESC)
+  /rewind 3                  Rewind to message #3
+  /rewind --code             Rewind code changes only
+  /rewind --conversation 5   Rewind conversation to message #5
+
+Notes:
+  • Press ESC during a conversation to open the rewind UI
+  • File changes are tracked automatically when you edit files
+  • Each user message creates a rewind point
+  • Rewinding removes all messages after the selected point`);
+      return { success: true };
+    }
+
+    // 如果没有指定消息索引，显示使用提示
+    if (messageIndex === undefined) {
+      const stats = session.getStats();
+      const messageCount = stats.messageCount;
+
+      ctx.ui.addMessage('assistant', `Rewind Feature
+
+Current session has ${messageCount} messages.
+
+To rewind, you can:
+  1. Press ESC to open the interactive rewind UI
+  2. Use /rewind <message-index> to rewind to a specific message
+
+Options:
+  /rewind --code           Rewind file changes only
+  /rewind --conversation   Rewind conversation only
+  /rewind --both           Rewind both (default)
+
+Example:
+  /rewind 3                Rewind to message #3
+  /rewind --code 5         Restore files to state at message #5
+
+Tip: Use /rewind --help for more information.`);
+      return { success: true };
+    }
+
+    // 验证消息索引
+    const stats = session.getStats();
+    if (messageIndex < 1 || messageIndex > stats.messageCount) {
+      ctx.ui.addMessage('assistant', `Invalid message index: ${messageIndex}
+
+Valid range: 1 to ${stats.messageCount}
+
+Use /rewind without arguments to see available rewind points.`);
       return { success: false };
     }
 
-    ctx.ui.addMessage('assistant', `Rewind feature:
+    // 显示将要执行的操作
+    const modeDescription = {
+      'code': 'code changes only',
+      'conversation': 'conversation only',
+      'both': 'code and conversation',
+    }[mode];
 
-To rewind ${steps} step(s), this would:
-  1. Remove the last ${steps * 2} messages (user + assistant pairs)
-  2. Restore conversation state
+    ctx.ui.addMessage('assistant', `Rewinding ${modeDescription} to message #${messageIndex}...
 
-Note: This feature requires message history tracking.
-Currently, you can:
-  - Use /clear to start fresh
-  - Use /resume to restore a saved session`);
+This will:
+${mode !== 'conversation' ? '  • Restore files to their state at that point\n' : ''}${mode !== 'code' ? `  • Remove ${stats.messageCount - messageIndex} message(s) after that point\n` : ''}
+Note: File rewind requires file history tracking to be enabled.
+The rewind feature tracks file changes automatically when you use Edit/Write tools.
+
+To enable the full interactive rewind UI, press ESC during a conversation.`);
+
+    // 记录活动
+    ctx.ui.addActivity(`Rewind requested: ${modeDescription} to message #${messageIndex}`);
 
     return { success: true };
   },
@@ -1044,6 +1152,240 @@ You can try:
   },
 };
 
+// /tag - 会话标签管理
+export const tagCommand: SlashCommand = {
+  name: 'tag',
+  aliases: ['tags'],
+  description: 'Add, remove, or list session tags',
+  usage: '/tag [add|remove|list|clear] [tag-name]',
+  category: 'session',
+  execute: (ctx: CommandContext): CommandResult => {
+    const { args, session } = ctx;
+    const action = args[0]?.toLowerCase();
+
+    // 获取当前标签 - 优先使用 getTags() 方法，否则从会话文件读取
+    let currentTags: string[] = [];
+
+    if (session.getTags) {
+      currentTags = session.getTags();
+    } else {
+      // 从会话文件读取标签
+      try {
+        const sessionsDir = getSessionsDir();
+        const sessionFile = path.join(sessionsDir, `${session.id}.json`);
+        if (fs.existsSync(sessionFile)) {
+          const sessionData = JSON.parse(fs.readFileSync(sessionFile, 'utf-8'));
+          currentTags = sessionData?.metadata?.tags || [];
+        }
+      } catch {
+        currentTags = [];
+      }
+    }
+
+    // 默认或 list：显示所有标签
+    if (!action || action === 'list') {
+      if (currentTags.length === 0) {
+        ctx.ui.addMessage('assistant', `Session Tags\n\nNo tags on this session.\n\nUsage:\n  /tag add <name>    - Add a tag\n  /tag remove <name> - Remove a tag\n  /tag list          - List all tags\n  /tag clear         - Remove all tags\n\nExamples:\n  /tag add feature-x\n  /tag add bug-fix\n  /tag add important`);
+        return { success: true };
+      }
+
+      let tagInfo = `Session Tags (${currentTags.length})\n\n`;
+      currentTags.forEach((tag, i) => {
+        tagInfo += `  ${i + 1}. ${tag}\n`;
+      });
+      tagInfo += `\nCommands:\n  /tag add <name>    - Add a tag\n  /tag remove <name> - Remove a tag\n  /tag clear         - Remove all tags`;
+
+      ctx.ui.addMessage('assistant', tagInfo);
+      return { success: true };
+    }
+
+    // add：添加标签
+    if (action === 'add') {
+      if (args.length < 2) {
+        ctx.ui.addMessage('assistant', 'Usage: /tag add <tag-name>\n\nExample: /tag add feature-x');
+        return { success: false };
+      }
+
+      const tagName = args.slice(1).join('-').toLowerCase().replace(/[^a-z0-9-]/g, '');
+      if (!tagName) {
+        ctx.ui.addMessage('assistant', 'Invalid tag name. Tags can only contain letters, numbers, and hyphens.');
+        return { success: false };
+      }
+
+      if (currentTags.includes(tagName)) {
+        ctx.ui.addMessage('assistant', `Tag "${tagName}" already exists on this session.`);
+        return { success: true };
+      }
+
+      const newTags = [...currentTags, tagName];
+
+      // 保存标签
+      if (session.setTags) {
+        session.setTags(newTags);
+      } else {
+        // 直接修改会话文件
+        try {
+          const sessionsDir = getSessionsDir();
+          const sessionFile = path.join(sessionsDir, `${session.id}.json`);
+
+          if (fs.existsSync(sessionFile)) {
+            const sessionData = JSON.parse(fs.readFileSync(sessionFile, 'utf-8'));
+            if (!sessionData.metadata) {
+              sessionData.metadata = {};
+            }
+            sessionData.metadata.tags = newTags;
+            sessionData.metadata.modified = Date.now();
+            fs.writeFileSync(sessionFile, JSON.stringify(sessionData, null, 2));
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          ctx.ui.addMessage('assistant', `Error saving tag: ${errorMsg}`);
+          return { success: false };
+        }
+      }
+
+      ctx.ui.addMessage('assistant', `Added tag: ${tagName}\n\nCurrent tags: ${newTags.join(', ')}`);
+      ctx.ui.addActivity(`Added tag: ${tagName}`);
+      return { success: true };
+    }
+
+    // remove：移除标签
+    if (action === 'remove' || action === 'rm') {
+      if (args.length < 2) {
+        ctx.ui.addMessage('assistant', 'Usage: /tag remove <tag-name>\n\nExample: /tag remove feature-x');
+        return { success: false };
+      }
+
+      const tagName = args.slice(1).join('-').toLowerCase();
+      if (!currentTags.includes(tagName)) {
+        ctx.ui.addMessage('assistant', `Tag "${tagName}" not found on this session.\n\nCurrent tags: ${currentTags.join(', ') || '(none)'}`);
+        return { success: false };
+      }
+
+      const newTags = currentTags.filter(t => t !== tagName);
+
+      // 保存标签
+      if (session.setTags) {
+        session.setTags(newTags);
+      } else {
+        // 直接修改会话文件
+        try {
+          const sessionsDir = getSessionsDir();
+          const sessionFile = path.join(sessionsDir, `${session.id}.json`);
+
+          if (fs.existsSync(sessionFile)) {
+            const sessionData = JSON.parse(fs.readFileSync(sessionFile, 'utf-8'));
+            if (!sessionData.metadata) {
+              sessionData.metadata = {};
+            }
+            sessionData.metadata.tags = newTags;
+            sessionData.metadata.modified = Date.now();
+            fs.writeFileSync(sessionFile, JSON.stringify(sessionData, null, 2));
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          ctx.ui.addMessage('assistant', `Error saving tag: ${errorMsg}`);
+          return { success: false };
+        }
+      }
+
+      ctx.ui.addMessage('assistant', `Removed tag: ${tagName}\n\nRemaining tags: ${newTags.join(', ') || '(none)'}`);
+      ctx.ui.addActivity(`Removed tag: ${tagName}`);
+      return { success: true };
+    }
+
+    // clear：清除所有标签
+    if (action === 'clear') {
+      if (currentTags.length === 0) {
+        ctx.ui.addMessage('assistant', 'No tags to clear.');
+        return { success: true };
+      }
+
+      const tagCount = currentTags.length;
+
+      // 保存标签
+      if (session.setTags) {
+        session.setTags([]);
+      } else {
+        // 直接修改会话文件
+        try {
+          const sessionsDir = getSessionsDir();
+          const sessionFile = path.join(sessionsDir, `${session.id}.json`);
+
+          if (fs.existsSync(sessionFile)) {
+            const sessionData = JSON.parse(fs.readFileSync(sessionFile, 'utf-8'));
+            if (!sessionData.metadata) {
+              sessionData.metadata = {};
+            }
+            sessionData.metadata.tags = [];
+            sessionData.metadata.modified = Date.now();
+            fs.writeFileSync(sessionFile, JSON.stringify(sessionData, null, 2));
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          ctx.ui.addMessage('assistant', `Error clearing tags: ${errorMsg}`);
+          return { success: false };
+        }
+      }
+
+      ctx.ui.addMessage('assistant', `Cleared ${tagCount} tag(s) from this session.`);
+      ctx.ui.addActivity('Cleared session tags');
+      return { success: true };
+    }
+
+    // toggle：快速切换标签
+    if (action === 'toggle') {
+      if (args.length < 2) {
+        ctx.ui.addMessage('assistant', 'Usage: /tag toggle <tag-name>');
+        return { success: false };
+      }
+
+      const tagName = args.slice(1).join('-').toLowerCase().replace(/[^a-z0-9-]/g, '');
+      let newTags: string[];
+      let message: string;
+
+      if (currentTags.includes(tagName)) {
+        newTags = currentTags.filter(t => t !== tagName);
+        message = `Removed tag: ${tagName}`;
+      } else {
+        newTags = [...currentTags, tagName];
+        message = `Added tag: ${tagName}`;
+      }
+
+      // 保存标签
+      if (session.setTags) {
+        session.setTags(newTags);
+      } else {
+        // 直接修改会话文件
+        try {
+          const sessionsDir = getSessionsDir();
+          const sessionFile = path.join(sessionsDir, `${session.id}.json`);
+
+          if (fs.existsSync(sessionFile)) {
+            const sessionData = JSON.parse(fs.readFileSync(sessionFile, 'utf-8'));
+            if (!sessionData.metadata) {
+              sessionData.metadata = {};
+            }
+            sessionData.metadata.tags = newTags;
+            sessionData.metadata.modified = Date.now();
+            fs.writeFileSync(sessionFile, JSON.stringify(sessionData, null, 2));
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          ctx.ui.addMessage('assistant', `Error toggling tag: ${errorMsg}`);
+          return { success: false };
+        }
+      }
+
+      ctx.ui.addMessage('assistant', message);
+      return { success: true };
+    }
+
+    ctx.ui.addMessage('assistant', `Unknown action: ${action}\n\nUsage:\n  /tag add <name>\n  /tag remove <name>\n  /tag list\n  /tag clear\n  /tag toggle <name>`);
+    return { success: false };
+  },
+};
+
 // 辅助函数：格式化持续时间
 function formatDuration(ms: number): string {
   const seconds = Math.floor(ms / 1000);
@@ -1068,4 +1410,5 @@ export function registerSessionCommands(): void {
   commandRegistry.register(renameCommand);
   commandRegistry.register(exportCommand);
   commandRegistry.register(transcriptCommand);
+  commandRegistry.register(tagCommand);
 }

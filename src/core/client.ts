@@ -5,7 +5,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import type { Message, ContentBlock, ToolDefinition } from '../types/index.js';
+import type { Message, ContentBlock, ToolDefinition, WebSearchTool20250305 } from '../types/index.js';
 import type { ProxyConfig, ProxyAgentOptions, TimeoutConfig } from '../network/index.js';
 import { createProxyAgent } from '../network/index.js';
 import {
@@ -16,8 +16,9 @@ import {
   type ThinkingConfig,
   type ThinkingResult,
 } from '../models/index.js';
-import { initAuth, getAuth } from '../auth/index.js';
+import { initAuth, getAuth, refreshTokenAsync } from '../auth/index.js';
 import { v4 as uuidv4 } from 'uuid';
+import { VERSION_BASE } from '../version.js';
 import { randomBytes } from 'crypto';
 
 export interface ClientConfig {
@@ -237,6 +238,45 @@ function buildBetas(_model: string, isOAuth: boolean): string[] {
   return betas;
 }
 
+/**
+ * 构建 API 工具列表
+ * 将客户端工具定义转换为 API 格式，并始终添加 WebSearch Server Tool
+ *
+ * 官方 Claude Code 使用 Anthropic API 的 Server Tool 进行网络搜索：
+ * - type: 'web_search_20250305'
+ * - name: 'web_search'
+ *
+ * Server Tool 由 Anthropic 服务器执行，比客户端实现更可靠
+ */
+function buildApiTools(tools?: ToolDefinition[]): any[] | undefined {
+  const apiTools: any[] = [];
+
+  // 添加客户端工具
+  if (tools && tools.length > 0) {
+    for (const tool of tools) {
+      apiTools.push({
+        name: tool.name,
+        description: tool.description,
+        input_schema: tool.inputSchema,
+      });
+    }
+  }
+
+  // 始终添加 WebSearch Server Tool（对齐官方实现）
+  const webSearchServerTool: WebSearchTool20250305 = {
+    name: 'web_search',
+    type: 'web_search_20250305',
+    // 可以根据需要添加配置：
+    // allowed_domains: ['example.com'],
+    // blocked_domains: ['spam.com'],
+    // max_uses: 10,
+    // user_location: { type: 'approximate', country: 'US' },
+  };
+  apiTools.push(webSearchServerTool);
+
+  return apiTools.length > 0 ? apiTools : undefined;
+}
+
 export class ClaudeClient {
   private client: Anthropic;
   private model: string;
@@ -274,17 +314,16 @@ export class ClaudeClient {
     // 通过抓包分析得到的官方请求头
     const defaultHeaders: Record<string, string> = {
       'x-app': 'cli',
-      'User-Agent': 'claude-cli/2.0.76 (external, claude-vscode, agent-sdk/0.1.75)',
+      'User-Agent': `claude-cli/${VERSION_BASE} (external, claude-vscode, agent-sdk/0.1.75)`,
       'anthropic-dangerous-direct-browser-access': 'true',
     };
 
     // 如果使用 OAuth，标记模式
     if (authToken) {
       this.isOAuth = true;
-      console.log('[ClaudeClient] Using OAuth mode with authToken');
-    } else if (apiKey) {
-      console.log('[ClaudeClient] Using API key mode');
+      // 调试日志已移除，避免污染 UI 输出
     }
+    // API key 模式无需日志
 
     const anthropicConfig: any = {
       apiKey: apiKey,  // OAuth 模式下为 null
@@ -330,7 +369,10 @@ export class ClaudeClient {
 
     // 根据模型能力设置 maxTokens
     const capabilities = modelConfig.getCapabilities(this.model);
-    this.maxTokens = config.maxTokens || Math.min(32000, capabilities.maxOutputTokens);
+    // SDK限制：maxTokens不能太大，否则会要求streaming
+    // 计算公式：3600 * maxTokens / 128000 <= 600，即 maxTokens <= 21333
+    // 使用21000作为安全默认值（留有余量）
+    this.maxTokens = config.maxTokens || Math.min(21000, capabilities.maxOutputTokens);
 
     this.maxRetries = config.maxRetries ?? 2;
     this.retryDelay = config.retryDelay ?? 1000;
@@ -398,14 +440,54 @@ export class ClaudeClient {
         return this.withRetry(operation, retryCount + 1);
       }
 
-      // 非重试错误，打印详细信息
-      console.error(`[ClaudeClient] API request failed: ${error.message}`);
-      if (errorStatus === 401) {
-        console.error('[ClaudeClient] Authentication failed - check your API key');
+      // 401 错误：尝试刷新 OAuth token
+      if (errorStatus === 401 && retryCount === 0) {
+        const auth = getAuth();
+        if (auth?.type === 'oauth' && auth.refreshToken) {
+          console.log('[ClaudeClient] OAuth token expired, attempting refresh...');
+          try {
+            const refreshedAuth = await refreshTokenAsync(auth);
+            if (refreshedAuth?.accessToken) {
+              console.log('[ClaudeClient] OAuth token refreshed, retrying request...');
+              // 重置默认客户端，以便下次获取新的 token
+              resetDefaultClient();
+              // 更新当前客户端的 authToken
+              if (this.client) {
+                // 创建新的客户端实例
+                const newAuthToken = refreshedAuth.accessToken;
+                const clientOptions: any = {
+                  apiKey: null, // OAuth 模式不需要 apiKey
+                  authToken: newAuthToken,
+                  baseURL: this.client.baseURL,
+                  maxRetries: 0,
+                };
+                // 保持代理配置（如果有）
+                const existingOptions = (this.client as any)._options;
+                if (existingOptions?.httpAgent) {
+                  clientOptions.httpAgent = existingOptions.httpAgent;
+                }
+                if (existingOptions?.defaultHeaders) {
+                  clientOptions.defaultHeaders = existingOptions.defaultHeaders;
+                }
+                this.client = new Anthropic(clientOptions);
+                this.isOAuth = true;
+              }
+              // 重试请求
+              return this.withRetry(operation, retryCount + 1);
+            }
+          } catch (refreshError) {
+            console.error('[ClaudeClient] OAuth token refresh failed:', refreshError);
+          }
+        }
+        console.error('[ClaudeClient] Authentication failed - check your API key or login again');
+      } else if (errorStatus === 401) {
+        console.error('[ClaudeClient] Authentication failed after token refresh - please login again');
       } else if (errorStatus === 403) {
         console.error('[ClaudeClient] Access denied - check API key permissions');
       } else if (errorStatus === 400) {
         console.error('[ClaudeClient] Bad request - check your request parameters');
+      } else {
+        console.error(`[ClaudeClient] API request failed: ${error.message}`);
       }
 
       throw error;
@@ -507,6 +589,9 @@ export class ClaudeClient {
         // 格式化 system prompt（OAuth 模式需要特殊格式）
         const formattedSystem = formatSystemPrompt(systemPrompt, this.isOAuth);
 
+        // 构建 API 工具列表（将 WebSearch 客户端工具替换为 Server Tool）
+        const apiTools = buildApiTools(tools);
+
         const requestParams: any = {
           model: currentModel,
           max_tokens: this.maxTokens,
@@ -515,11 +600,7 @@ export class ClaudeClient {
             role: m.role,
             content: m.content,
           })),
-          tools: tools?.map((t) => ({
-            name: t.name,
-            description: t.description,
-            input_schema: t.inputSchema,
-          })),
+          tools: apiTools,
           // 添加 betas 参数（官方 Claude Code 的关键）
           ...(betas.length > 0 ? { betas } : {}),
           // 添加 metadata（官方 Claude Code 的 Ja 函数）
@@ -611,14 +692,17 @@ export class ClaudeClient {
     options?: {
       enableThinking?: boolean;
       thinkingBudget?: number;
+      signal?: AbortSignal;
     }
   ): AsyncGenerator<{
-    type: 'text' | 'thinking' | 'tool_use_start' | 'tool_use_delta' | 'stop' | 'usage' | 'error';
+    type: 'text' | 'thinking' | 'tool_use_start' | 'tool_use_delta' | 'server_tool_use_start' | 'web_search_result' | 'stop' | 'usage' | 'error' | 'response_headers';
     text?: string;
     thinking?: string;
     id?: string;
     name?: string;
     input?: string;
+    /** Web search results (for server_tool_use) */
+    searchResults?: any[];
     stopReason?: string;
     usage?: {
       inputTokens: number;
@@ -628,10 +712,16 @@ export class ClaudeClient {
       thinkingTokens?: number;
     };
     error?: string;
+    /** v2.1.6: 响应头（用于速率限制警告） */
+    headers?: Headers;
   }> {
     let stream: any;
+    let retryCount = 0;
+    const maxStreamRetries = this.maxRetries;
+    const abortSignal = options?.signal;
 
-    try {
+    // 创建流的辅助函数（支持重试）
+    const attemptCreateStream = async (): Promise<any> => {
       if (this.debug) {
         console.log('[ClaudeClient] Starting message stream...');
         console.log(`[ClaudeClient] Model: ${this.model}, MaxTokens: ${this.maxTokens}`);
@@ -654,9 +744,15 @@ export class ClaudeClient {
       // 格式化 system prompt（OAuth 模式需要特殊格式）
       const formattedSystem = formatSystemPrompt(systemPrompt, this.isOAuth);
 
+      // 构建 API 工具列表（将 WebSearch 客户端工具替换为 Server Tool）
+      const apiTools = buildApiTools(tools);
+
       if (this.debug) {
         console.log('[ClaudeClient] Using beta.messages.stream with betas:', betas);
         console.log('[ClaudeClient] System prompt format:', Array.isArray(formattedSystem) ? 'array' : 'string');
+        if (apiTools?.some(t => t.type === 'web_search_20250305')) {
+          console.log('[ClaudeClient] WebSearch Server Tool enabled');
+        }
       }
 
       // 使用 beta.messages.stream 而不是 messages.stream（官方方式）
@@ -668,20 +764,45 @@ export class ClaudeClient {
           role: m.role,
           content: m.content,
         })) as any,
-        tools: tools?.map((t) => ({
-          name: t.name,
-          description: t.description,
-          input_schema: t.inputSchema,
-        })) as any,
+        tools: apiTools as any,
         // 添加 betas 参数（官方 Claude Code 的关键）
         ...(betas.length > 0 ? { betas } : {}),
         // 添加 metadata（官方 Claude Code 的 Ja 函数）
         metadata: buildMetadata(),
         ...thinkingParams,
       });
-    } catch (error: any) {
-      console.error('[ClaudeClient] Failed to create stream:', error.message);
-      yield { type: 'error', error: error.message };
+      return stream;
+    };
+
+    // 带重试的流创建
+    while (retryCount <= maxStreamRetries) {
+      try {
+        stream = await attemptCreateStream();
+        break; // 成功创建，跳出重试循环
+      } catch (error: any) {
+        const errorType = error.type || error.code || error.message || '';
+        const isRetryable = RETRYABLE_ERRORS.some(
+          (e) => errorType.includes(e) || error.message?.includes(e)
+        );
+
+        if (isRetryable && retryCount < maxStreamRetries) {
+          retryCount++;
+          const delay = this.retryDelay * Math.pow(2, retryCount - 1);
+          console.error(
+            `[ClaudeClient] Stream creation failed (${errorType}), retrying in ${delay}ms... (attempt ${retryCount}/${maxStreamRetries})`
+          );
+          await this.sleep(delay);
+          continue;
+        }
+
+        console.error('[ClaudeClient] Failed to create stream:', error.message);
+        yield { type: 'error', error: error.message };
+        return;
+      }
+    }
+
+    if (!stream) {
+      yield { type: 'error', error: 'Failed to create stream after retries' };
       return;
     }
 
@@ -693,6 +814,18 @@ export class ClaudeClient {
 
     try {
       for await (const event of stream) {
+        // 检查是否被中断
+        if (abortSignal?.aborted) {
+          // 尝试取消流
+          try {
+            stream.abort?.();
+          } catch {
+            // 忽略取消时的错误
+          }
+          yield { type: 'error', error: 'Request aborted by user' };
+          return;
+        }
+
         if (event.type === 'content_block_delta') {
           const delta = event.delta as any;
           if (delta.type === 'text_delta') {
@@ -707,12 +840,18 @@ export class ClaudeClient {
           const block = event.content_block as any;
           if (block.type === 'tool_use') {
             yield { type: 'tool_use_start', id: block.id, name: block.name };
+          } else if (block.type === 'server_tool_use') {
+            // Server Tool (如 web_search) - 由 Anthropic 服务器执行
+            yield { type: 'server_tool_use_start', id: block.id, name: block.name };
           } else if (block.type === 'thinking') {
             // Extended Thinking block started
             if (this.debug) {
               console.log('[ClaudeClient] Extended Thinking block started');
             }
           }
+        } else if (event.type === 'content_block_stop') {
+          // 检查是否是 web_search_tool_result
+          // 注意：web_search_tool_result 作为完整块返回，需要从 finalMessage 中获取
         } else if (event.type === 'message_delta') {
           const delta = event as any;
           if (delta.usage) {
@@ -756,7 +895,22 @@ export class ClaudeClient {
               thinkingTokens,
             },
           };
-          yield { type: 'stop' };
+
+          // v2.1.6: 获取响应头用于速率限制警告
+          // 对齐官方 pG0 函数：在流结束后获取响应头
+          try {
+            const { response } = await stream.withResponse();
+            if (response?.headers) {
+              yield { type: 'response_headers', headers: response.headers };
+            }
+          } catch (headerError) {
+            // 获取响应头失败不应影响正常流程
+            if (this.debug) {
+              console.warn('[ClaudeClient] Failed to get response headers:', headerError);
+            }
+          }
+
+          yield { type: 'stop', stopReason: finalMessage?.stop_reason || 'end_turn' };
         } else if (event.type === 'error') {
           const errorEvent = event as any;
           console.error('[ClaudeClient] Stream error event:', errorEvent.error);
@@ -844,17 +998,24 @@ export function getDefaultClient(): ClaudeClient {
     if (auth) {
       if (auth.type === 'api_key' && auth.apiKey) {
         config.apiKey = auth.apiKey;
-      } else if (auth.type === 'oauth' && auth.accessToken) {
-        // 关键修复：检查是否有 user:inference scope
-        // 官方 Claude Code 在有此 scope 时直接使用 OAuth access token
-        if (hasInferenceScope(auth.scope)) {
-          // 直接使用 OAuth access token 作为 authToken
-          // 这是官方 Claude Code 的做法
-          config.authToken = auth.accessToken;
-        } else {
-          // 没有 inference scope，需要使用创建的 API Key
-          if (auth.oauthApiKey) {
-            config.apiKey = auth.oauthApiKey;
+      } else if (auth.type === 'oauth') {
+        // OAuth 模式：支持 accessToken 或 authToken（订阅模式）
+        const oauthToken = auth.accessToken || auth.authToken;
+
+        if (oauthToken) {
+          // 关键修复：检查是否有 user:inference scope
+          // 官方 Claude Code 在有此 scope 时直接使用 OAuth access token
+          // 注意：auth.scope 或 auth.scopes 都可能存在
+          const scopes = auth.scope || auth.scopes;
+          if (hasInferenceScope(scopes)) {
+            // 直接使用 OAuth access token 作为 authToken
+            // 这是官方 Claude Code 的做法
+            config.authToken = oauthToken;
+          } else {
+            // 没有 inference scope，需要使用创建的 API Key
+            if (auth.oauthApiKey) {
+              config.apiKey = auth.oauthApiKey;
+            }
           }
         }
       }
@@ -870,6 +1031,35 @@ export function getDefaultClient(): ClaudeClient {
  */
 export function resetDefaultClient(): void {
   _defaultClient = null;
+}
+
+/**
+ * 创建指定模型的客户端（复用 auth 模块的认证）
+ * 用于需要使用不同模型（如 Haiku）的场景
+ */
+export function createClientWithModel(model: string): ClaudeClient {
+  initAuth();
+  const auth = getAuth();
+
+  const config: ClientConfig = { model };
+
+  if (auth) {
+    if (auth.type === 'api_key' && auth.apiKey) {
+      config.apiKey = auth.apiKey;
+    } else if (auth.type === 'oauth') {
+      const oauthToken = auth.accessToken || auth.authToken;
+      if (oauthToken) {
+        const scopes = auth.scope || auth.scopes;
+        if (hasInferenceScope(scopes)) {
+          config.authToken = oauthToken;
+        } else if (auth.oauthApiKey) {
+          config.apiKey = auth.oauthApiKey;
+        }
+      }
+    }
+  }
+
+  return new ClaudeClient(config);
 }
 
 // 保持向后兼容性，但不推荐直接使用

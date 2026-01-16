@@ -10,7 +10,6 @@
  * - Token 存储加密
  * - 会话过期处理
  * - 完整的登出清理
- * - 多因素认证 (MFA/2FA)
  */
 
 import * as fs from 'fs';
@@ -20,8 +19,6 @@ import * as http from 'http';
 import * as crypto from 'crypto';
 import open from 'open';
 
-// 导入 MFA 模块
-import * as MFA from './mfa.js';
 // 导入 Keychain 模块
 import * as Keychain from './keychain.js';
 
@@ -46,10 +43,6 @@ export interface AuthConfig {
   userCode?: string;
   verificationUri?: string;
   interval?: number;
-  // MFA 相关
-  mfaRequired?: boolean;
-  mfaVerified?: boolean;
-  deviceId?: string; // 受信任设备 ID
   // OAuth 创建的临时 API Key（用于调用消息 API）
   oauthApiKey?: string;
   oauthApiKeyExpiresAt?: number;
@@ -120,21 +113,21 @@ const ENCRYPTION_KEY = crypto
 const OAUTH_SCOPES = ['org:create_api_key', 'user:profile', 'user:inference', 'user:sessions:claude_code'];
 
 // OAuth 端点配置
-const OAUTH_ENDPOINTS: Record<'claude.ai' | 'console', OAuthConfig> = {
+export const OAUTH_ENDPOINTS: Record<'claude.ai' | 'console', OAuthConfig> = {
   'claude.ai': {
     clientId: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
-    authorizationEndpoint: 'https://claude.ai/oauth/authorize',
-    deviceCodeEndpoint: 'https://claude.ai/oauth/device/code',
-    tokenEndpoint: 'https://console.anthropic.com/v1/oauth/token',
-    redirectUri: 'https://console.anthropic.com/oauth/code/callback',  // 使用官方的回调页面
+    authorizationEndpoint: 'https://platform.claude.com/oauth/authorize',
+    deviceCodeEndpoint: 'https://platform.claude.com/oauth/device/code',
+    tokenEndpoint: 'https://platform.claude.com/v1/oauth/token',
+    redirectUri: 'https://platform.claude.com/oauth/code/callback',  // 使用官方的回调页面
     scope: OAUTH_SCOPES,
   },
   console: {
     clientId: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
-    authorizationEndpoint: 'https://console.anthropic.com/oauth/authorize',
-    deviceCodeEndpoint: 'https://console.anthropic.com/oauth/device/code',
-    tokenEndpoint: 'https://console.anthropic.com/v1/oauth/token',
-    redirectUri: 'https://console.anthropic.com/oauth/code/callback',  // 使用官方的回调页面
+    authorizationEndpoint: 'https://platform.claude.com/oauth/authorize',
+    deviceCodeEndpoint: 'https://platform.claude.com/oauth/device/code',
+    tokenEndpoint: 'https://platform.claude.com/v1/oauth/token',
+    redirectUri: 'https://platform.claude.com/oauth/code/callback',  // 使用官方的回调页面
     scope: OAUTH_SCOPES,
   },
 };
@@ -174,7 +167,7 @@ function decrypt(text: string): string {
 /**
  * 安全地保存认证数据（加密）
  */
-function saveAuthSecure(auth: AuthConfig): void {
+export function saveAuthSecure(auth: AuthConfig): void {
   if (!fs.existsSync(AUTH_DIR)) {
     fs.mkdirSync(AUTH_DIR, { recursive: true });
   }
@@ -256,8 +249,6 @@ export function initAuth(): AuthConfig | null {
       type: 'api_key',
       accountType: 'api',
       apiKey: envApiKey,
-      mfaRequired: false, // API Key 不需要 MFA
-      mfaVerified: true,
     };
     return currentAuth;
   }
@@ -278,16 +269,15 @@ export function initAuth(): AuthConfig | null {
 
         // 检查是否有 user:inference scope（订阅用户标志）
         if (hasInferenceScope(scopes)) {
-          console.log('[Auth] Using OAuth token with user:inference scope (subscription mode)');
+          // 调试日志已移除，避免污染 UI 输出
           currentAuth = {
             type: 'oauth',
             accountType: 'subscription',
             authToken: oauth.accessToken,
+            accessToken: oauth.accessToken,  // 添加 accessToken 字段
             refreshToken: oauth.refreshToken,
             expiresAt: oauth.expiresAt,
             scopes: scopes,
-            mfaRequired: false,
-            mfaVerified: true,
           };
           return currentAuth;
         }
@@ -303,13 +293,11 @@ export function initAuth(): AuthConfig | null {
     try {
       const config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
       if (config.primaryApiKey) {
-        console.log('[Auth] Using primaryApiKey from official Claude Code config');
+        // 调试日志已移除，避免污染 UI 输出
         currentAuth = {
           type: 'api_key',
           accountType: 'api',
           apiKey: config.primaryApiKey,
-          mfaRequired: false,
-          mfaVerified: true,
         };
         return currentAuth;
       }
@@ -322,13 +310,11 @@ export function initAuth(): AuthConfig | null {
   if (Keychain.isKeychainAvailable()) {
     const keychainApiKey = Keychain.loadFromKeychain();
     if (keychainApiKey) {
-      console.log('[Auth] Using API Key from macOS Keychain');
+      // 调试日志已移除，避免污染 UI 输出
       currentAuth = {
         type: 'api_key',
         accountType: 'api',
         apiKey: keychainApiKey,
-        mfaRequired: false,
-        mfaVerified: true,
       };
       return currentAuth;
     }
@@ -346,8 +332,6 @@ export function initAuth(): AuthConfig | null {
           type: 'api_key',
           accountType: 'api',
           apiKey: creds.apiKey,
-          mfaRequired: false,
-          mfaVerified: true,
         };
         return currentAuth;
       }
@@ -370,13 +354,6 @@ export function initAuth(): AuthConfig | null {
         }
       });
     }
-
-    // 检查是否需要 MFA
-    const mfaEnabled = MFA.isMFAEnabled();
-    const needsMFA = mfaEnabled && MFA.requiresMFA(auth.deviceId);
-
-    auth.mfaRequired = needsMFA;
-    auth.mfaVerified = !needsMFA; // 如果不需要 MFA，则视为已验证
 
     currentAuth = auth;
     return currentAuth;
@@ -824,7 +801,7 @@ function waitForCallback(
  * 交换授权码获取 token (官方方式 - 使用 JSON)
  * 官方实现在 token 请求中包含 state 参数
  */
-async function exchangeAuthorizationCode(
+export async function exchangeAuthorizationCode(
   config: OAuthConfig,
   code: string,
   codeVerifier: string,
@@ -1228,7 +1205,7 @@ export async function setupToken(readline: {
     console.log('│       Claude Code Token Setup           │');
     console.log('╰─────────────────────────────────────────╯\n');
     console.log('You can get your API key from:');
-    console.log('  https://console.anthropic.com/settings/keys\n');
+    console.log('  https://platform.claude.com/settings/keys\n');
 
     readline.question('Enter your Anthropic API key: ', async (apiKey) => {
       apiKey = apiKey.trim();
@@ -1282,8 +1259,6 @@ export function logout(): void {
   } catch (err) {
     console.error('Failed to delete auth file:', err);
   }
-
-  // 注意：不清除 MFA 配置，因为用户可能只是登出而不是禁用 MFA
 }
 
 /**
@@ -1380,89 +1355,6 @@ function refreshToken(auth: AuthConfig): AuthConfig | null {
   return null;
 }
 
-// ============ MFA 集成 ============
-
-/**
- * 执行 MFA 验证
- */
-export async function performMFAVerification(
-  method: MFA.MFAMethod,
-  code: string,
-  trustDevice = false
-): Promise<boolean> {
-  if (!currentAuth) {
-    throw new Error('Not authenticated');
-  }
-
-  const result = MFA.verifyMFA({
-    method,
-    code,
-    trustDevice,
-  });
-
-  if (result.success) {
-    // 更新认证状态
-    currentAuth.mfaVerified = true;
-
-    // 如果选择信任设备，保存设备 ID
-    if (result.deviceId) {
-      currentAuth.deviceId = result.deviceId;
-      saveAuthSecure(currentAuth);
-    }
-
-    return true;
-  }
-
-  return false;
-}
-
-/**
- * 检查当前认证是否需要 MFA 验证
- */
-export function needsMFAVerification(): boolean {
-  if (!currentAuth) {
-    return false;
-  }
-
-  return currentAuth.mfaRequired === true && currentAuth.mfaVerified !== true;
-}
-
-/**
- * 获取 MFA 状态
- */
-export function getMFAStatus(): ReturnType<typeof MFA.getMFAStatus> {
-  return MFA.getMFAStatus();
-}
-
-// 重新导出 MFA 相关函数
-export {
-  setupTOTP,
-  verifyTOTPSetup,
-  getTOTPConfig,
-  disableTOTP,
-  verifyMFA,
-  requiresMFA,
-  getTrustedDevices,
-  removeTrustedDevice,
-  clearTrustedDevices,
-  disableMFA,
-  regenerateRecoveryCodes,
-  isMFAEnabled,
-} from './mfa.js';
-
-// 导出 MFA 类型
-export type {
-  MFAMethod,
-  MFAConfig,
-  TOTPSecret,
-  SMSConfig,
-  EmailConfig,
-  WebAuthnCredential,
-  TrustedDevice,
-  MFAVerificationRequest,
-  MFAVerificationResult,
-} from './mfa.js';
-
 // ============ 用户信息获取 ============
 
 /**
@@ -1517,3 +1409,16 @@ export {
   migrateToKeychain,
   getKeychainStatus,
 } from './keychain.js';
+
+// ============ Help Improve Claude 设置 ============
+
+// 重新导出设置相关函数
+export {
+  fetchHelpImproveClaudeSetting,
+  isHelpImproveClaudeEnabled,
+  isCodeHaikuEnabled,
+  clearSettingsCache,
+  getCachedSettings,
+  fetchWithOAuthRetry,
+  type HelpImproveClaudeSettings,
+} from './settings.js';

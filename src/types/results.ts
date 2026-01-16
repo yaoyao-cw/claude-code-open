@@ -97,6 +97,8 @@ export interface BashToolResult extends ToolResult {
   sandboxed?: boolean;
   /** Working directory where command was executed */
   cwd?: string;
+  /** Whether the command was blocked due to security reasons */
+  blocked?: boolean;
 }
 
 /**
@@ -188,26 +190,6 @@ export interface EditToolResult extends ToolResult {
   content?: string;
   /** Error code for edit failures (matches official CLI error codes: 8=STRING_NOT_FOUND, 9=MULTIPLE_MATCHES, 10=FILE_NOT_READ, 11=INVALID_PATH) */
   errorCode?: number;
-}
-
-/**
- * Multi-edit result
- * Returned by the MultiEdit tool after batch editing operations
- */
-export interface MultiEditToolResult extends ToolResult {
-  /** Number of files modified */
-  filesModified?: number;
-  /** Total number of edits applied */
-  totalEdits?: number;
-  /** List of modified files */
-  modifiedFiles?: string[];
-  /** Detailed results for each edit */
-  editResults?: Array<{
-    filePath: string;
-    success: boolean;
-    replacements: number;
-    error?: string;
-  }>;
 }
 
 // ============================================================================
@@ -551,17 +533,6 @@ export interface SkillToolResult extends ToolResult {
   exitCode?: number;
 }
 
-/**
- * Slash command result
- * Returned by SlashCommand tool
- */
-export interface SlashCommandToolResult extends ToolResult {
-  /** Command that was executed */
-  command?: string;
-  /** Command output */
-  commandOutput?: string;
-}
-
 // ============================================================================
 // Plan Mode Results
 // ============================================================================
@@ -586,27 +557,6 @@ export interface ExitPlanModeToolResult extends ToolResult {
   planModeActive?: boolean;
   /** Summary of actions taken in plan mode */
   summary?: string;
-}
-
-// ============================================================================
-// Tmux Results
-// ============================================================================
-
-/**
- * Tmux operation result
- * Returned by Tmux tool after terminal multiplexer operations
- */
-export interface TmuxToolResult extends ToolResult {
-  /** Tmux command that was executed */
-  command?: string;
-  /** Session name */
-  sessionName?: string;
-  /** Window name */
-  windowName?: string;
-  /** Pane ID */
-  paneId?: string;
-  /** Command output */
-  tmuxOutput?: string;
 }
 
 // ============================================================================
@@ -644,7 +594,6 @@ export type AnyToolResult =
   | ReadToolResult
   | WriteToolResult
   | EditToolResult
-  | MultiEditToolResult
   | GlobToolResult
   | GrepToolResult
   | WebFetchToolResult
@@ -660,10 +609,8 @@ export type AnyToolResult =
   | MCPSearchToolResult
   | AskUserQuestionToolResult
   | SkillToolResult
-  | SlashCommandToolResult
   | EnterPlanModeToolResult
-  | ExitPlanModeToolResult
-  | TmuxToolResult;
+  | ExitPlanModeToolResult;
 
 // ============================================================================
 // Type Guards

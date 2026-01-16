@@ -1,6 +1,6 @@
-# The world needs an open-source Claude Code.
+# The world needs an open-source Claude Code.It will become the foundational infrastructure of AI in the future, running on every PC.
 
-A reverse-engineered restoration based on `@anthropic-ai/claude-code` v2.0.76.
+A reverse-engineered restoration based on `@anthropic-ai/claude-code` v2.1.4.
 
 **For educational and research purposes only.**
 
@@ -505,7 +505,7 @@ npm run test:watch
 
 ## Recent Improvements
 
-### v2.0.76+ Enhancements
+### v2.1.4+ Enhancements
 - ✅ **Tool-level error handling & retry** - Exponential backoff for transient failures
 - ✅ **LSP URI handling** - Enhanced URI parsing and location validation
 - ✅ **Grep output format** - 100% match with official implementation
@@ -571,7 +571,7 @@ npx tsc --noEmit
 
 ## Community
 
-- **Discord:** [Join our Discord](https://discord.gg/hs5BWGjt)
+- **Discord:** [Join our Discord](https://discord.gg/bNyJKk6PVZ)
 - **X (Twitter):** [@wangbingjie1989](https://x.com/wangbingjie1989)
 
 ## License

@@ -1,0 +1,3578 @@
+/* 主容器 */
+.container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #1e1e1e; /* VS Code 深色背景 */
+}
+
+/* 加载和错误状态 */
+.loadingContainer,
+.errorContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #808080;
+  gap: 16px;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #3c3c3c;
+  border-top-color: #007acc;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.errorText { color: #f48771; }
+
+.retryButton {
+  padding: 8px 16px;
+  background: #007acc;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* ============================================ */
+/* VS Code 风格布局 */
+/* ============================================ */
+
+.vscodeLayout {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* 左侧边栏 */
+.sidebar {
+  width: 260px;
+  background: #252526;
+  border-right: 1px solid #3c3c3c;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transition: width 0.2s ease;
+}
+
+/* 左侧边栏折叠状态 */
+.sidebarCollapsed {
+  width: 40px;
+}
+
+.sidebarCollapsed .sidebarHeader {
+  justify-content: center;
+  padding: 10px 8px;
+}
+
+.sidebarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #252526;
+  border-bottom: 1px solid #3c3c3c;
+  font-size: 11px;
+  font-weight: 600;
+  color: #bbbbbb;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* 折叠按钮 */
+.collapseBtn {
+  background: transparent;
+  border: none;
+  color: #bbbbbb;
+  font-size: 12px;
+  padding: 4px 6px;
+  cursor: pointer;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.collapseBtn:hover {
+  background: #3c3c3c;
+  color: #ffffff;
+}
+
+.sidebarTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.sidebarContent {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+  min-height: 200px;
+}
+
+/* 项目选择器容器 */
+.projectSelector {
+  padding: 8px 12px;
+  border-bottom: 1px solid #3c3c3c;
+  background: #2d2d2d;
+}
+
+/* 侧边栏工具栏 */
+.sidebarToolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.toolbarBtn {
+  background: transparent;
+  border: none;
+  color: #bbbbbb;
+  font-size: 14px;
+  padding: 4px 6px;
+  cursor: pointer;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toolbarBtn:hover {
+  background: #3c3c3c;
+  color: #ffffff;
+}
+
+.toolbarBtn:active {
+  background: #4c4c4c;
+}
+
+/* 工具栏按钮激活状态（开关已开启） */
+.toolbarBtn.active {
+  background: #0e639c;
+  color: #ffffff;
+}
+
+.toolbarBtn.active:hover {
+  background: #1177bb;
+}
+
+/* 目录树 */
+.treeItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #cccccc;
+  transition: background 0.1s;
+  user-select: none;
+}
+
+.treeItem:hover {
+  background: #2a2d2e;
+}
+
+.treeItem.selected {
+  background: #094771;
+}
+
+.treeItem.hasModule {
+  color: #4ec9b0;
+}
+
+.treeIcon {
+  width: 16px;
+  font-size: 10px;
+  color: #808080;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.fileIcon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.treeName {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+/* 主编辑区 */
+.mainPanel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #1e1e1e;
+}
+
+/* 标签栏 */
+.tabBar {
+  display: flex;
+  background: #252526;
+  border-bottom: 1px solid #3c3c3c;
+  min-height: 35px;
+}
+
+.tabIcon {
+  font-size: 14px;
+}
+
+.tabName {
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+/* 编辑区内容 */
+.editorContent {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 当显示分析结果时添加内边距 */
+.editorContent > .analysisResult,
+.editorContent > .welcomePage,
+.editorContent > .analyzingState,
+.editorContent > .errorState {
+  padding: 24px;
+  overflow-y: auto;
+}
+
+/* 模块详情 */
+.moduleDetail,
+.directoryDetail {
+  max-width: 800px;
+}
+
+.moduleHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #3c3c3c;
+}
+
+.modulePath {
+  font-size: 20px;
+  font-weight: 400;
+  color: #4ec9b0;
+  margin: 0;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+.moduleType {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.moduleType.frontend { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+.moduleType.backend { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+.moduleType.database { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+.moduleType.service { background: rgba(168, 85, 247, 0.2); color: #a78bfa; }
+.moduleType.infrastructure { background: rgba(107, 114, 128, 0.2); color: #9ca3af; }
+.moduleType.other { background: rgba(107, 114, 128, 0.2); color: #9ca3af; }
+
+.folderBadge {
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  font-size: 11px;
+  color: #808080;
+}
+
+.moduleDescription {
+  font-size: 14px;
+  color: #d4d4d4;
+  line-height: 1.6;
+  margin: 0 0 24px 0;
+}
+
+.directoryHint {
+  font-size: 13px;
+  color: #808080;
+  margin: 0 0 24px 0;
+}
+
+/* 区块 */
+.section {
+  margin-bottom: 24px;
+}
+
+.sectionTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: #808080;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 12px 0;
+}
+
+.responsibilityList {
+  margin: 0;
+  padding-left: 20px;
+  color: #d4d4d4;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.responsibilityList li {
+  margin-bottom: 4px;
+}
+
+.responsibilityList li::marker {
+  color: #007acc;
+}
+
+.techTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.techTag {
+  padding: 6px 12px;
+  background: #2d2d2d;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #9cdcfe;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+/* 子模块网格 */
+.childModuleGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.childModuleCard {
+  background: #2d2d2d;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  padding: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.childModuleCard:hover {
+  border-color: #007acc;
+  background: #323232;
+}
+
+.childModuleHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.childModuleName {
+  font-size: 14px;
+  font-weight: 500;
+  color: #4ec9b0;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+.childModuleType {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.childModuleType.frontend { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+.childModuleType.backend { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+.childModuleType.database { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+.childModuleType.service { background: rgba(168, 85, 247, 0.2); color: #a78bfa; }
+.childModuleType.infrastructure { background: rgba(107, 114, 128, 0.2); color: #9ca3af; }
+.childModuleType.other { background: rgba(107, 114, 128, 0.2); color: #9ca3af; }
+
+.childModuleDesc {
+  font-size: 12px;
+  color: #808080;
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* 欢迎页面 */
+.welcomePage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  text-align: center;
+  padding: 40px;
+}
+
+.welcomeHero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.welcomeTitle {
+  font-size: 28px;
+  font-weight: 300;
+  color: #cccccc;
+  margin: 0 0 16px 0;
+}
+
+.welcomeDesc {
+  font-size: 14px;
+  color: #808080;
+  margin: 0 0 32px 0;
+  max-width: 500px;
+  line-height: 1.6;
+}
+
+.welcomeStats {
+  display: flex;
+  gap: 40px;
+  margin-bottom: 32px;
+}
+
+.welcomeStat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.welcomeStatValue {
+  font-size: 36px;
+  font-weight: 300;
+  color: #007acc;
+}
+
+.welcomeStatLabel {
+  font-size: 12px;
+  color: #808080;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.welcomeHint {
+  font-size: 13px;
+  color: #606060;
+  font-style: italic;
+}
+
+.moduleGraphSection {
+  width: 100%;
+  margin-top: 32px;
+  text-align: left;
+}
+
+.moduleGraphHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  gap: 16px;
+}
+
+/* Tab 切换样式 */
+.graphTabs {
+  display: flex;
+  gap: 4px;
+  background: #1a1a2e;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid #2d2d4a;
+}
+
+.graphTab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #808090;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.graphTab:hover {
+  background: #2d2d4a;
+  color: #c0c0d0;
+}
+
+.graphTabActive {
+  background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3);
+}
+
+.graphTabActive:hover {
+  background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+  color: #fff;
+}
+
+.moduleGraphTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: #d6d6d6;
+  margin: 0;
+}
+
+.moduleGraphHint {
+  font-size: 12px;
+  color: #8a8a8a;
+  margin: 4px 0 0 0;
+}
+
+.moduleGraphRefresh {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid #2b3550;
+  background: #0f172a;
+  color: #d1d5db;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.moduleGraphRefresh:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.moduleGraphBody {
+  background: #0b1220;
+  border: 1px solid #1f2a44;
+  border-radius: 12px;
+  padding: 12px;
+  min-height: 320px;
+}
+
+.moduleGraphState,
+.moduleGraphEmpty {
+  color: #8a8a8a;
+  font-size: 13px;
+  text-align: center;
+  padding: 40px 0;
+}
+
+.moduleGraphError {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #f97316;
+  font-size: 13px;
+  padding: 32px 0;
+}
+
+.moduleGraphRetry {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid #f97316;
+  background: transparent;
+  color: #f97316;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+/* ============================================ */
+/* 底部状态栏 */
+/* ============================================ */
+
+.statusBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  height: 24px;
+  background: #007acc;
+  color: white;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.statusLeft,
+.statusRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.statusItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.statusBadge {
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.statusBadge.draft { background: rgba(255, 255, 255, 0.2); }
+.statusBadge.review { background: #f59e0b; color: #000; }
+.statusBadge.approved { background: #10b981; }
+.statusBadge.executing { background: #3b82f6; }
+.statusBadge.completed { background: #22c55e; }
+.statusBadge.paused { background: #eab308; color: #000; }
+.statusBadge.modified { background: #a855f7; }
+.statusBadge.rejected { background: #ef4444; }
+.statusBadge.failed { background: #dc2626; }
+
+/* 蓝图操作按钮组 */
+.blueprintActions {
+  display: flex;
+  gap: 6px;
+  margin-left: 8px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.actionBtn {
+  padding: 2px 10px;
+  border: none;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.actionBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.actionBtn.primary {
+  background: #3b82f6;
+  color: white;
+}
+
+.actionBtn.primary:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.actionBtn.success {
+  background: #10b981;
+  color: white;
+}
+
+.actionBtn.success:hover:not(:disabled) {
+  background: #059669;
+}
+
+.actionBtn.warning {
+  background: #f59e0b;
+  color: #000;
+}
+
+.actionBtn.warning:hover:not(:disabled) {
+  background: #d97706;
+}
+
+.actionBtn.danger {
+  background: #ef4444;
+  color: white;
+}
+
+.actionBtn.danger:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.actionBtn.default {
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+}
+
+.actionBtn.default:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* 操作错误提示 */
+.operationError {
+  padding: 2px 8px;
+  background: #ef4444;
+  color: white;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: help;
+}
+
+.statusTech {
+  padding: 1px 6px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.statusBtn {
+  padding: 2px 10px;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  border-radius: 3px;
+  color: white;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.statusBtn:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.statusBtn.success {
+  background: #10b981;
+}
+
+.statusBtn.success:hover {
+  background: #059669;
+}
+
+.statusBtn.danger {
+  background: #ef4444;
+}
+
+.statusBtn.danger:hover {
+  background: #dc2626;
+}
+
+/* ============================================ */
+/* ============================================ */
+/* 已分析状态 */
+/* ============================================ */
+
+.treeItem.analyzed {
+  color: #4ec9b0;
+}
+
+.analyzedDot {
+  color: #10b981;
+  font-size: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* ============================================ */
+/* 拖拽样式 */
+/* ============================================ */
+
+/* 正在被拖拽的项目 */
+.treeItem.dragging {
+  opacity: 0.5;
+  background: #1e1e1e;
+}
+
+/* 拖放目标高亮 */
+.treeItem.dropTarget {
+  background: #264f78 !important;
+  border: 1px dashed #007acc;
+  border-radius: 3px;
+}
+
+/* 被剪切的项目（半透明） */
+.treeItem.cutItem {
+  opacity: 0.5;
+}
+
+/* 拖拽时的光标 */
+.treeItem[draggable="true"] {
+  cursor: grab;
+}
+
+.treeItem[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+/* ============================================ */
+/* 代码符号显示 */
+/* ============================================ */
+
+.symbolItem {
+  font-size: 12px;
+  color: #c8c8c8;
+}
+
+.symbolItem .treeName {
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-weight: 400;
+}
+
+.symbolLine {
+  margin-left: 4px;
+  font-size: 10px;
+  color: #858585;
+  font-family: 'Consolas', monospace;
+}
+
+.symbolItem:hover .symbolLine {
+  color: #b0b0b0;
+}
+
+.symbolItem.selected {
+  background: #094771;
+  color: white;
+}
+
+.symbolItem.selected .symbolLine {
+  color: #c0d9ea;
+}
+
+/* 符号详情面板 */
+.symbolDetail {
+  padding: 24px 32px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.symbolDetailHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #3c3c3c;
+  margin-bottom: 24px;
+}
+
+.symbolDetailIcon {
+  font-size: 40px;
+  flex-shrink: 0;
+}
+
+.symbolDetailTitle {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.symbolName {
+  font-size: 28px;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0;
+  font-family: 'Consolas', monospace;
+}
+
+.symbolKind {
+  background: #007acc;
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  width: fit-content;
+}
+
+.symbolLocation {
+  font-size: 13px;
+  color: #858585;
+  font-family: 'Consolas', monospace;
+}
+
+.symbolSection {
+  margin-bottom: 24px;
+}
+
+.symbolSectionTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0 0 12px 0;
+}
+
+.symbolTypeInfo {
+  background: #2d2d30;
+  padding: 12px 16px;
+  border-radius: 6px;
+  border-left: 3px solid #007acc;
+  color: #cccccc;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.symbolTypeDetail {
+  margin-top: 8px;
+  background: #1e1e1e;
+  padding: 8px 12px;
+  border-radius: 4px;
+}
+
+.symbolTypeDetail code {
+  color: #4ec9b0;
+  font-family: 'Consolas', monospace;
+  font-size: 13px;
+}
+
+.symbolMembers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.symbolMember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #2d2d30;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.symbolMember:hover {
+  background: #3c3c3c;
+}
+
+.symbolMemberIcon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.symbolMemberName {
+  font-family: 'Consolas', monospace;
+  color: #dcdcdc;
+  font-size: 13px;
+  flex: 1;
+}
+
+.symbolMemberKind {
+  font-size: 11px;
+  color: #858585;
+  text-transform: uppercase;
+}
+
+.symbolMemberLine {
+  font-size: 11px;
+  color: #858585;
+  font-family: 'Consolas', monospace;
+}
+
+.callGraphPlaceholder {
+  background: #2d2d30;
+  padding: 20px;
+  border-radius: 6px;
+  text-align: center;
+  border: 1px dashed #3c3c3c;
+}
+
+.callGraphPlaceholder p {
+  margin: 8px 0;
+  color: #858585;
+  font-size: 13px;
+}
+
+.locationItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #2d2d30;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.locationLabel {
+  color: #858585;
+  font-size: 13px;
+  min-width: 60px;
+}
+
+.locationValue {
+  background: #1e1e1e;
+  color: #4ec9b0;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: 'Consolas', monospace;
+  flex: 1;
+}
+
+/* 刷新按钮 */
+.refreshBtn {
+  background: transparent;
+  border: none;
+  color: #808080;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.refreshBtn:hover {
+  background: #3c3c3c;
+  color: #cccccc;
+}
+
+/* 目录树错误 */
+.treeError {
+  padding: 8px 16px;
+  font-size: 12px;
+  color: #f48771;
+  background: rgba(244, 135, 113, 0.1);
+  border-bottom: 1px solid #3c3c3c;
+}
+
+/* ============================================ */
+/* 欢迎页面提示 */
+/* ============================================ */
+
+.welcomeTips {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 24px;
+  padding: 16px 24px;
+  background: #252526;
+  border-radius: 8px;
+}
+
+.tipItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #808080;
+}
+
+.tipIcon {
+  font-size: 14px;
+}
+
+/* ============================================ */
+/* 分析中状态 */
+/* ============================================ */
+
+.analyzingState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 16px;
+  text-align: center;
+}
+
+.analyzingSpinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid #3c3c3c;
+  border-top-color: #007acc;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.analyzingTitle {
+  font-size: 18px;
+  font-weight: 400;
+  color: #cccccc;
+  margin: 0;
+}
+
+.analyzingHint {
+  font-size: 13px;
+  color: #606060;
+  margin: 0;
+}
+
+/* ============================================ */
+/* 错误状态 */
+/* ============================================ */
+
+.errorState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 16px;
+  text-align: center;
+}
+
+/* ============================================ */
+/* 分析结果 */
+/* ============================================ */
+
+.analysisResult {
+  max-width: 900px;
+}
+
+.analysisHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #3c3c3c;
+}
+
+.analysisTitle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.analysisIcon {
+  font-size: 24px;
+}
+
+.analysisPath {
+  font-size: 20px;
+  font-weight: 400;
+  color: #4ec9b0;
+  margin: 0;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+.analysisType {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.1);
+  color: #9ca3af;
+}
+
+.regenerateBtn {
+  padding: 6px 12px;
+  background: #2d2d2d;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  color: #cccccc;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.regenerateBtn:hover {
+  background: #3c3c3c;
+  border-color: #007acc;
+}
+
+.analysisSummary {
+  font-size: 16px;
+  font-weight: 500;
+  color: #d4d4d4;
+  margin-bottom: 12px;
+}
+
+.analysisDescription {
+  font-size: 14px;
+  color: #9ca3af;
+  line-height: 1.7;
+  margin-bottom: 24px;
+}
+
+/* ============================================ */
+/* 分析区块 */
+/* ============================================ */
+
+.analysisSection {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: #252526;
+  border-radius: 8px;
+  border: 1px solid #3c3c3c;
+}
+
+.sectionList {
+  margin: 0;
+  padding-left: 20px;
+  color: #d4d4d4;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.sectionList li {
+  margin-bottom: 4px;
+}
+
+.sectionList li::marker {
+  color: #007acc;
+}
+
+/* 导出列表 */
+.exportList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.exportItem {
+  padding: 4px 10px;
+  background: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #dcdcaa;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+/* 依赖列表 */
+.depList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.depItem {
+  padding: 4px 10px;
+  background: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #9cdcfe;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  transition: all 0.2s;
+}
+
+/* 可点击的内部依赖 */
+.depItem.clickable {
+  cursor: pointer;
+  border-color: #4fc3f7;
+  color: #4fc3f7;
+}
+
+.depItem.clickable:hover {
+  background: #1e3a5f;
+  border-color: #64b5f6;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(79, 195, 247, 0.2);
+}
+
+/* 被引用列表（反向依赖） */
+.reverseDepList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reverseDepItem {
+  padding: 12px;
+  background: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-left: 3px solid #4caf50;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reverseDepItem:hover {
+  background: #2a3a2e;
+  border-left-color: #66bb6a;
+  transform: translateX(4px);
+  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.2);
+}
+
+.reverseDepPath {
+  font-size: 13px;
+  color: #4fc3f7;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-weight: 500;
+}
+
+.reverseDepImports {
+  font-size: 12px;
+  color: #9e9e9e;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  padding-left: 20px;
+}
+
+/* ============================================ */
+/* 关系图谱 */
+/* ============================================ */
+
+.relationshipGraph {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px;
+  background: #1a1a1a;
+  border-radius: 8px;
+  min-height: 200px;
+}
+
+.graphRow {
+  width: 100%;
+  margin: 12px 0;
+}
+
+.graphNodes {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.graphNode {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 16px;
+  background: #2a2a2a;
+  border: 2px solid #4fc3f7;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s;
+  min-width: 100px;
+  max-width: 150px;
+}
+
+.graphNode:hover {
+  background: #1e3a5f;
+  border-color: #64b5f6;
+  transform: translateY(-3px);
+  box-shadow: 0 4px 12px rgba(79, 195, 247, 0.3);
+  z-index: 10;
+}
+
+.graphNode.external {
+  border-color: #9e9e9e;
+  cursor: default;
+}
+
+.graphNode.external:hover {
+  background: #2a2a2a;
+  border-color: #9e9e9e;
+  transform: none;
+  box-shadow: none;
+}
+
+.graphNodeIcon {
+  font-size: 20px;
+}
+
+.graphNodeName {
+  font-size: 11px;
+  color: #cccccc;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  text-align: center;
+  word-break: break-all;
+  line-height: 1.3;
+}
+
+.graphNodeMore {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 16px;
+  background: #2a2a2a;
+  border: 2px dashed #606060;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #808080;
+  min-width: 100px;
+}
+
+/* 连接线 */
+.graphConnector {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  background: linear-gradient(to bottom, #4fc3f7, transparent);
+  pointer-events: none;
+}
+
+/* 当前文件（中心节点） */
+.graphCenter {
+  display: flex;
+  justify-content: center;
+  margin: 20px 0;
+}
+
+.graphCurrent {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 32px;
+  background: linear-gradient(135deg, #094771 0%, #1e5a8e 100%);
+  border: 3px solid #007acc;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 122, 204, 0.4);
+}
+
+.graphCurrentIcon {
+  font-size: 32px;
+}
+
+.graphCurrentName {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  text-align: center;
+}
+
+.graphCurrentBadge {
+  padding: 3px 10px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  font-size: 10px;
+  color: #e0e0e0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* 关键点列表 */
+.keyPointsList {
+  margin: 0;
+  padding-left: 20px;
+  color: #d4d4d4;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.keyPointsList li {
+  margin-bottom: 4px;
+}
+
+.keyPointsList li::marker {
+  color: #fbbf24;
+}
+
+/* ============================================ */
+/* 子模块网格 */
+/* ============================================ */
+
+.childrenGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.childCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.childCard:hover {
+  border-color: #007acc;
+  background: #2d2d2d;
+}
+
+.childName {
+  font-size: 13px;
+  font-weight: 500;
+  color: #4ec9b0;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+.childDesc {
+  font-size: 12px;
+  color: #808080;
+  line-height: 1.4;
+}
+
+/* ============================================ */
+/* 分析页脚 */
+/* ============================================ */
+
+.analysisFooter {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #3c3c3c;
+}
+
+.analyzedTime {
+  font-size: 12px;
+  color: #606060;
+}
+
+.cacheBadge {
+  display: inline-block;
+  padding: 2px 8px;
+  margin-left: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #4fc3f7;
+  background: rgba(79, 195, 247, 0.15);
+  border: 1px solid rgba(79, 195, 247, 0.3);
+  border-radius: 4px;
+  cursor: help;
+  transition: all 0.2s;
+}
+
+.cacheBadge:hover {
+  background: rgba(79, 195, 247, 0.25);
+}
+
+.freshBadge {
+  display: inline-block;
+  padding: 2px 8px;
+  margin-left: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #66bb6a;
+  background: rgba(102, 187, 106, 0.15);
+  border: 1px solid rgba(102, 187, 106, 0.3);
+  border-radius: 4px;
+  cursor: help;
+  transition: all 0.2s;
+}
+
+.freshBadge:hover {
+  background: rgba(102, 187, 106, 0.25);
+}
+
+/* ============================================ */
+/* 状态栏分析中 */
+/* ============================================ */
+
+.statusAnalyzing {
+  color: rgba(255, 255, 255, 0.8);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ============================================ */
+/* 标签切换 */
+/* ============================================ */
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: #2d2d2d;
+  border-right: 1px solid #252526;
+  font-size: 13px;
+  color: #808080;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+}
+
+.tab:hover {
+  background: #323232;
+  color: #cccccc;
+}
+
+.activeTab {
+  background: #1e1e1e;
+  color: #ffffff;
+}
+
+.activeTab::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #007acc;
+}
+
+.unsavedDot {
+  color: #fbbf24;
+  font-size: 10px;
+  margin-left: 4px;
+}
+
+.tabClose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 4px;
+  border-radius: 3px;
+  font-size: 14px;
+  color: #808080;
+  opacity: 0;
+  transition: all 0.15s;
+}
+
+.tab:hover .tabClose {
+  opacity: 1;
+}
+
+.tabClose:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.breadcrumb {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  overflow: hidden;
+}
+
+.breadcrumbPath {
+  font-size: 12px;
+  color: #606060;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ============================================ */
+/* 代码编辑器 */
+/* ============================================ */
+
+.codeEditor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #1e1e1e;
+}
+
+.codeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: #252526;
+  border-bottom: 1px solid #3c3c3c;
+  flex-shrink: 0;
+}
+
+.codeInfo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.codeLanguage {
+  padding: 3px 8px;
+  background: #007acc;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: white;
+  text-transform: uppercase;
+}
+
+.codeSize {
+  font-size: 12px;
+  color: #808080;
+}
+
+.unsavedBadge {
+  padding: 2px 8px;
+  background: rgba(251, 191, 36, 0.2);
+  border: 1px solid #fbbf24;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #fbbf24;
+}
+
+.codeActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.codeBtn {
+  padding: 6px 12px;
+  background: #2d2d2d;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #cccccc;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.codeBtn:hover {
+  background: #3c3c3c;
+  border-color: #505050;
+}
+
+.codeBtn.active {
+  background: #094771;
+  border-color: #007acc;
+  color: white;
+}
+
+.codeBtn.saveBtn {
+  background: #10b981;
+  border-color: #10b981;
+  color: white;
+}
+
+.codeBtn.saveBtn:hover {
+  background: #059669;
+  border-color: #059669;
+}
+
+.codeBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.codeContent {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+
+/* 编辑器和右侧面板容器 */
+.editorWithPanel {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Monaco Editor 容器 */
+.monacoContainer {
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ============================================ */
+/* 右侧行详情面板 */
+/* ============================================ */
+
+.lineDetailPanel {
+  width: 280px;
+  min-width: 280px;
+  background: #1e1e1e;
+  border-left: 1px solid #3c3c3c;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.lineDetailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #252526;
+  border-bottom: 1px solid #3c3c3c;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.lineDetailTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: #dcdcaa;
+}
+
+.lineDetailLoading {
+  font-size: 10px;
+  color: #808080;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lineDetailCode {
+  padding: 8px 12px;
+  background: #2d2d2d;
+  border-bottom: 1px solid #3c3c3c;
+}
+
+.lineDetailCode code {
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 10px;
+  color: #9cdcfe;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.lineDetailSection {
+  padding: 8px 12px;
+  border-bottom: 1px solid #3c3c3c;
+}
+
+.lineDetailSectionTitle {
+  font-size: 10px;
+  font-weight: 600;
+  color: #808080;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+  letter-spacing: 0.5px;
+}
+
+.lineDetailKeyword {
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #3c3c3c;
+}
+
+.lineDetailKeyword:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.keywordName {
+  display: inline-block;
+  padding: 1px 6px;
+  background: rgba(78, 201, 176, 0.2);
+  color: #4ec9b0;
+  border-radius: 3px;
+  font-family: 'Consolas', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.keywordBrief {
+  color: #d4d4d4;
+  font-size: 11px;
+}
+
+.keywordDetail {
+  color: #9ca3af;
+  font-size: 10px;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.keywordExample {
+  margin: 4px 0 0 0;
+  padding: 4px 8px;
+  background: #1a1a1a;
+  border-radius: 3px;
+  font-family: 'Consolas', monospace;
+  font-size: 9px;
+  color: #ce9178;
+  overflow-x: auto;
+}
+
+/* AI 分析样式 */
+.aiAnalysisBrief {
+  color: #d4d4d4;
+  font-size: 11px;
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+
+.aiAnalysisDetail {
+  color: #9ca3af;
+  font-size: 10px;
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+
+.aiAnalysisParams {
+  margin-top: 6px;
+}
+
+.paramTitle, .exampleTitle {
+  font-size: 10px;
+  color: #808080;
+  margin-bottom: 4px;
+}
+
+.paramItem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  margin-bottom: 4px;
+  font-size: 10px;
+}
+
+.paramItem code {
+  color: #9cdcfe;
+  font-size: 10px;
+}
+
+.paramType {
+  color: #4ec9b0;
+  font-size: 9px;
+}
+
+.paramDesc {
+  color: #9ca3af;
+  font-size: 10px;
+}
+
+.aiAnalysisReturns {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 10px;
+}
+
+.returnLabel {
+  color: #808080;
+}
+
+.aiAnalysisReturns code {
+  color: #4ec9b0;
+  font-size: 10px;
+}
+
+.aiAnalysisExamples {
+  margin-top: 6px;
+}
+
+.exampleCode {
+  margin: 4px 0;
+  padding: 4px 8px;
+  background: #1a1a1a;
+  border-radius: 3px;
+  font-family: 'Consolas', monospace;
+  font-size: 9px;
+  color: #ce9178;
+  overflow-x: auto;
+}
+
+/* 加载动画 */
+.loadingSpinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #3c3c3c;
+  border-top-color: #007acc;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.codeTextarea {
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+  background: #1e1e1e;
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #d4d4d4;
+  tab-size: 2;
+  white-space: pre;
+  overflow: auto;
+}
+
+.codeTextarea:focus {
+  background: #1e1e1e;
+}
+
+.codePreview {
+  margin: 0;
+  padding: 16px;
+  background: #1e1e1e;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #d4d4d4;
+  white-space: pre;
+  overflow: auto;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.codePreview code {
+  font-family: inherit;
+  background: none;
+  padding: 0;
+}
+
+.codeFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  background: #252526;
+  border-top: 1px solid #3c3c3c;
+  flex-shrink: 0;
+}
+
+.codeModified {
+  font-size: 11px;
+  color: #606060;
+}
+
+.codeLines {
+  font-size: 11px;
+  color: #808080;
+}
+
+.codeShortcuts {
+  font-size: 10px;
+  color: #606060;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+/* ============================================ */
+/* 状态栏保存中 */
+/* ============================================ */
+
+.statusSaving {
+  color: #fbbf24;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+/* ============================================ */
+/* 响应式 */
+/* ============================================ */
+
+@media (max-width: 900px) {
+  .sidebar {
+    width: 200px;
+  }
+
+  .childrenGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .vscodeLayout {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    height: 200px;
+    border-right: none;
+    border-bottom: 1px solid #3c3c3c;
+  }
+
+  .childModuleGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .analysisHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .analysisTitle {
+    flex-wrap: wrap;
+  }
+
+  .analysisPath {
+    font-size: 16px;
+  }
+}
+
+/* ============================================ */
+/* 调用图谱相关样式 */
+/* ============================================ */
+
+.loadGraphBtn {
+  margin-left: auto;
+  padding: 4px 12px;
+  background: #007acc;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.loadGraphBtn:hover {
+  background: #005a9e;
+}
+
+.callGraphLoading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  color: #808080;
+  gap: 12px;
+}
+
+.callGraphLoading .spinner {
+  width: 32px;
+  height: 32px;
+}
+
+.callGraphError {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  color: #f48771;
+  gap: 12px;
+}
+
+.callGraphPlaceholder {
+  padding: 40px 20px;
+  text-align: center;
+  color: #808080;
+  border: 1px dashed #3c3c3c;
+  border-radius: 4px;
+  background: #252526;
+}
+
+.callGraphPlaceholder p {
+  margin: 8px 0;
+}
+
+.callGraphPlaceholder .hint {
+  font-size: 12px;
+  color: #6a6a6a;
+}
+
+/* 全屏调用图谱 */
+.callGraphFullscreen {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: #1a1a1a;
+  overflow: hidden;
+}
+
+.callGraphHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: #252525;
+  border-bottom: 1px solid #333;
+  flex-shrink: 0;
+}
+
+.callGraphTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.callGraphIcon {
+  font-size: 20px;
+}
+
+.callGraphMeta {
+  display: flex;
+  gap: 20px;
+  font-size: 13px;
+  color: #888;
+}
+
+.callGraphMeta span {
+  padding: 4px 12px;
+  background: #1a1a1a;
+  border-radius: 4px;
+  border: 1px solid #333;
+}
+
+/* 调用图谱内容区 - 左右分栏 */
+.callGraphContent {
+  display: flex;
+  gap: 20px;
+  flex: 1;
+  overflow: hidden;
+  padding: 20px;
+}
+
+.callGraphLeft {
+  flex: 0 0 450px;
+  overflow-y: auto;
+  padding-right: 10px;
+}
+
+.callGraphRight {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.graphSection {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #1a1a1a;
+  border-radius: 8px;
+  border: 1px solid #333;
+  overflow: hidden;
+}
+
+.graphSection h3 {
+  margin: 0;
+  padding: 12px 16px;
+  background: #252525;
+  border-bottom: 1px solid #333;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+
+/* 调用链列表样式 */
+.callChainList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.callChainHeader {
+  padding: 16px;
+  background: #252525;
+  border-radius: 8px;
+  border: 1px solid #333;
+}
+
+.callChainHeader h3 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.callChainHeader p {
+  margin: 4px 0;
+  font-size: 13px;
+  color: #aaa;
+}
+
+.callChainHeader code {
+  color: #0084ff;
+  background: #1a1a1a;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Fira Code', 'Cascadia Code', Consolas, monospace;
+}
+
+.entryPoints {
+  margin-top: 8px !important;
+  padding-top: 8px;
+  border-top: 1px solid #333;
+  font-size: 12px !important;
+  color: #888 !important;
+}
+
+/* 调用链项 */
+.callChainItem {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: #1a1a1a;
+  border-radius: 6px;
+  border: 1px solid #333;
+  transition: all 0.2s;
+}
+
+.callChainItem:hover {
+  background: #222;
+  border-color: #444;
+}
+
+.callChainIndex {
+  font-size: 11px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+}
+
+.callChainPath {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Fira Code', 'Cascadia Code', Consolas, monospace;
+  font-size: 13px;
+}
+
+.callChainNode {
+  padding: 4px 10px;
+  background: #252525;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.callChainNode:hover {
+  background: #0084ff;
+  border-color: #0084ff;
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 132, 255, 0.3);
+}
+
+.callChainArrow {
+  color: #666;
+  font-size: 16px;
+  user-select: none;
+}
+
+.callChainLength {
+  font-size: 11px;
+  color: #666;
+  text-align: right;
+}
+
+/* 空状态 */
+.callChainEmpty {
+  padding: 24px;
+  background: #1a1a1a;
+  border-radius: 8px;
+  border: 1px solid #333;
+  text-align: center;
+}
+
+.callChainEmpty p {
+  margin: 8px 0;
+  color: #aaa;
+}
+
+.callChainEmpty .hint {
+  margin-top: 16px;
+  font-size: 12px;
+  color: #888;
+  font-weight: 600;
+}
+
+.hintList {
+  margin: 8px 0;
+  padding-left: 24px;
+  text-align: left;
+  font-size: 12px;
+  color: #666;
+  list-style: disc;
+}
+
+.hintList li {
+  margin: 4px 0;
+}
+
+.symbolSectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ============================================ */
+/* 语义悬浮框样式 */
+/* ============================================ */
+
+.semanticTooltip {
+  background: #2d2d30;
+  border: 1px solid #454545;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  max-width: min(480px, calc(100vw - 32px));
+  min-width: min(320px, calc(100vw - 32px));
+  max-height: min(70vh, calc(100vh - 32px));
+  overflow-y: auto;
+  overflow-x: hidden;
+  animation: tooltipFadeIn 0.15s ease-out;
+  /* 确保不会超出视口 */
+  box-sizing: border-box;
+}
+
+/* 滚动条样式 */
+.semanticTooltip::-webkit-scrollbar {
+  width: 8px;
+}
+
+.semanticTooltip::-webkit-scrollbar-track {
+  background: #1e1e1e;
+}
+
+.semanticTooltip::-webkit-scrollbar-thumb {
+  background: #454545;
+  border-radius: 4px;
+}
+
+.semanticTooltip::-webkit-scrollbar-thumb:hover {
+  background: #555555;
+}
+
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 加载状态 */
+.tooltipLoading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  color: #808080;
+  font-size: 13px;
+}
+
+.tooltipSpinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #3c3c3c;
+  border-top-color: #007acc;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+/* 空状态 */
+.tooltipEmpty {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 20px;
+}
+
+.tooltipPath {
+  font-size: 13px;
+  color: #cccccc;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+.tooltipHint {
+  font-size: 11px;
+  color: #606060;
+}
+
+/* 内容区 */
+.tooltipContent {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 头部 */
+.tooltipHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #252526;
+  border-bottom: 1px solid #3c3c3c;
+}
+
+.tooltipIcon {
+  font-size: 16px;
+}
+
+.tooltipName {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: #4ec9b0;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tooltipType {
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  font-size: 10px;
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+/* 摘要 */
+.tooltipSummary {
+  padding: 12px 16px 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #d4d4d4;
+  line-height: 1.4;
+}
+
+/* 描述 */
+.tooltipDescription {
+  padding: 0 16px 12px;
+  font-size: 12px;
+  color: #9ca3af;
+  line-height: 1.5;
+}
+
+/* 区块 */
+.tooltipSection {
+  padding: 8px 16px;
+  border-top: 1px solid #3c3c3c;
+}
+
+.tooltipSectionTitle {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: #808080;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.tooltipList {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 12px;
+  color: #d4d4d4;
+  line-height: 1.6;
+}
+
+.tooltipList li {
+  margin-bottom: 2px;
+}
+
+.tooltipList li::marker {
+  color: #007acc;
+}
+
+.tooltipMore {
+  color: #808080;
+  font-style: italic;
+}
+
+/* 导出 */
+.tooltipExports {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tooltipExportItem {
+  padding: 2px 8px;
+  background: #1e1e1e;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #dcdcaa;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+/* 技术栈 */
+.tooltipTechStack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 16px;
+  border-top: 1px solid #3c3c3c;
+}
+
+.tooltipTech {
+  padding: 2px 8px;
+  background: rgba(0, 122, 204, 0.2);
+  border-radius: 4px;
+  font-size: 10px;
+  color: #9cdcfe;
+}
+
+/* 页脚 */
+.tooltipFooter {
+  padding: 8px 16px;
+  background: #252526;
+  border-top: 1px solid #3c3c3c;
+  font-size: 10px;
+  color: #606060;
+  text-align: center;
+}
+
+/* ============================================ */
+/* 符号分析增强样式 */
+/* ============================================ */
+
+/* 复杂度标签 */
+.tooltipComplexity {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 600;
+  margin-left: auto;
+}
+
+.complexityLow {
+  background: rgba(76, 175, 80, 0.2);
+  color: #81c784;
+}
+
+.complexityMedium {
+  background: rgba(255, 152, 0, 0.2);
+  color: #ffb74d;
+}
+
+.complexityHigh {
+  background: rgba(244, 67, 54, 0.2);
+  color: #e57373;
+}
+
+/* 参数类型 */
+.tooltipParamType {
+  color: #569cd6;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 11px;
+}
+
+/* 返回值 */
+.tooltipReturnValue {
+  font-size: 12px;
+  color: #d4d4d4;
+  padding: 4px 0;
+}
+
+/* 调用链 */
+.tooltipCallChain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0;
+}
+
+.callChainLabel {
+  font-size: 11px;
+  color: #808080;
+  min-width: 50px;
+}
+
+.tooltipCallItem {
+  padding: 2px 6px;
+  background: #1e1e1e;
+  border-radius: 3px;
+  font-size: 10px;
+  color: #ce9178;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+/* 调整列表样式以适应更多内容 */
+.tooltipList {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 12px;
+  color: #d4d4d4;
+  line-height: 1.5;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.tooltipList code {
+  background: #1e1e1e;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+  color: #dcdcaa;
+}
+
+/* 区块内部滚动 */
+.tooltipSection {
+  padding: 8px 16px;
+  border-top: 1px solid #3c3c3c;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.tooltipSection::-webkit-scrollbar {
+  width: 4px;
+}
+
+.tooltipSection::-webkit-scrollbar-thumb {
+  background: #3c3c3c;
+  border-radius: 2px;
+}
+
+/* ============================================ */
+/* 三层分层悬浮提示样式 */
+/* ============================================ */
+
+/* 层级标签 */
+.tooltipLayerLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #808080;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+/* 新手模式徽章 */
+.beginnerBadge {
+  padding: 1px 6px;
+  background: rgba(76, 175, 80, 0.2);
+  border-radius: 3px;
+  font-size: 9px;
+  color: #81c784;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ============ 第一层：用户注释 ============ */
+.tooltipUserComment {
+  padding: 10px 16px;
+  background: linear-gradient(135deg, rgba(33, 150, 243, 0.1) 0%, rgba(33, 150, 243, 0.05) 100%);
+  border-left: 3px solid #2196f3;
+  border-top: 1px solid #3c3c3c;
+}
+
+.tooltipCommentText {
+  font-size: 13px;
+  color: #e0e0e0;
+  line-height: 1.5;
+  margin-bottom: 6px;
+}
+
+.tooltipCommentParams {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tooltipCommentParam {
+  font-size: 11px;
+  color: #9e9e9e;
+}
+
+.tooltipCommentParam code {
+  color: #64b5f6;
+  background: rgba(100, 181, 246, 0.1);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+/* ============ 第二层：语法解释 ============ */
+.tooltipSyntaxLayer {
+  padding: 10px 16px;
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.1) 0%, rgba(76, 175, 80, 0.05) 100%);
+  border-left: 3px solid #4caf50;
+  border-top: 1px solid #3c3c3c;
+}
+
+.tooltipSyntaxList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tooltipSyntaxItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.syntaxKeyword {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  background: #1e1e1e;
+  border-radius: 3px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 11px;
+  color: #c586c0;
+  min-width: 60px;
+  text-align: center;
+}
+
+.syntaxBrief {
+  color: #b0b0b0;
+  line-height: 1.4;
+}
+
+/* ============ 第三层：AI 语义分析 ============ */
+.tooltipSemanticLayer {
+  padding: 10px 16px;
+  background: linear-gradient(135deg, rgba(156, 39, 176, 0.1) 0%, rgba(156, 39, 176, 0.05) 100%);
+  border-left: 3px solid #9c27b0;
+  border-top: 1px solid #3c3c3c;
+}
+
+.tooltipAILoading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid #3c3c3c;
+  color: #808080;
+  font-size: 12px;
+}
+
+/* 紧凑型区块 */
+.tooltipCompactSection {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #3c3c3c;
+}
+
+.tooltipMiniLabel {
+  font-size: 11px;
+  color: #808080;
+  min-width: 40px;
+}
+
+.tooltipMiniCode {
+  padding: 2px 6px;
+  background: #1e1e1e;
+  border-radius: 3px;
+  font-size: 11px;
+  color: #9cdcfe;
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+/* 提示区块 */
+.tooltipTipsSection {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #3c3c3c;
+}
+
+.tooltipTipText {
+  font-size: 12px;
+  color: #ffc107;
+  line-height: 1.4;
+}
+
+/* 页脚提示 */
+.tooltipFooterHint {
+  color: #606060;
+}
+
+/* ============================================ */
+/* AI 增强功能样式 */
+/* ============================================ */
+
+/* AI 工具按钮组 */
+.aiToolGroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  background: rgba(0, 122, 204, 0.1);
+  border-radius: 6px;
+  border: 1px solid rgba(0, 122, 204, 0.2);
+}
+
+.aiBtn {
+  background: transparent !important;
+  border: none !important;
+  color: #9cdcfe !important;
+  font-size: 11px !important;
+  padding: 4px 8px !important;
+}
+
+.aiBtn:hover {
+  background: rgba(0, 122, 204, 0.3) !important;
+  color: #fff !important;
+}
+
+.aiBtn.active {
+  background: #007acc !important;
+  color: #fff !important;
+}
+
+.toolDivider {
+  color: #3c3c3c;
+  margin: 0 8px;
+  font-size: 14px;
+}
+
+/* ============================================ */
+/* 代码编辑器与导游布局容器 */
+/* ============================================ */
+
+.codeEditorWithTour {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+  width: 100%;
+}
+
+.codeEditorMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #1e1e1e;
+  position: relative;
+}
+
+/* 当codeEditor作为codeEditorWithTour的子元素时，继承flex属性 */
+.codeEditorWithTour > .codeEditor {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ============================================ */
+/* AI 导游面板 - 右侧边栏 */
+/* ============================================ */
+
+.tourPanel {
+  width: 320px;
+  min-width: 280px;
+  max-width: 400px;
+  height: 100%;
+  background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+  border-left: 1px solid #0f3460;
+  display: flex;
+  flex-direction: column;
+  animation: tourSlideIn 0.3s ease-out;
+  overflow: hidden;
+}
+
+@keyframes tourSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.tourHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: rgba(0, 122, 204, 0.2);
+  border-bottom: 1px solid #0f3460;
+  flex-shrink: 0;
+}
+
+.tourTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  flex: 1;
+}
+
+.tourProgress {
+  font-size: 12px;
+  color: #64b5f6;
+  background: rgba(100, 181, 246, 0.1);
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+.tourClose {
+  background: transparent;
+  border: none;
+  color: #808080;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.tourClose:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.tourContent {
+  flex: 1;
+  padding: 14px;
+  overflow-y: auto;
+}
+
+.tourStepInfo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tourStepType {
+  font-size: 12px;
+  color: #4caf50;
+  background: rgba(76, 175, 80, 0.1);
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+
+.tourStepName {
+  font-size: 16px;
+  font-weight: 600;
+  color: #4ec9b0;
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.tourStepLine {
+  font-size: 11px;
+  color: #808080;
+  margin-left: auto;
+}
+
+.tourDescription {
+  font-size: 14px;
+  color: #d4d4d4;
+  line-height: 1.6;
+  margin: 0;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  border-left: 3px solid #007acc;
+}
+
+.tourNav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: rgba(0, 0, 0, 0.3);
+  border-top: 1px solid #0f3460;
+  flex-shrink: 0;
+}
+
+.tourNavBtn {
+  padding: 8px 16px;
+  background: #007acc;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tourNavBtn:hover:not(:disabled) {
+  background: #005a9e;
+  transform: translateY(-1px);
+}
+
+.tourNavBtn:disabled {
+  background: #3c3c3c;
+  color: #606060;
+  cursor: not-allowed;
+}
+
+.tourDots {
+  display: flex;
+  gap: 6px;
+}
+
+.tourDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3c3c3c;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tourDot:hover {
+  background: #606060;
+  transform: scale(1.2);
+}
+
+.tourDot.active {
+  background: #007acc;
+  box-shadow: 0 0 8px rgba(0, 122, 204, 0.5);
+}
+
+/* 步骤列表 - 右侧边栏 */
+.tourStepsList {
+  padding: 0 14px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.tourStepsTitle {
+  font-size: 11px;
+  color: #808080;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 12px 0 8px;
+}
+
+.tourStepItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin: 2px 0;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid transparent;
+}
+
+.tourStepItem:hover {
+  background: rgba(0, 122, 204, 0.15);
+  border-color: rgba(0, 122, 204, 0.3);
+}
+
+.tourStepItem.active {
+  background: rgba(0, 122, 204, 0.25);
+  border-color: #007acc;
+}
+
+.tourStepItemNum {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #3c3c3c;
+  color: #808080;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tourStepItem.active .tourStepItemNum {
+  background: #007acc;
+  color: #fff;
+}
+
+.tourStepItemName {
+  font-size: 12px;
+  color: #d4d4d4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.tourStepItemType {
+  font-size: 10px;
+  color: #808080;
+  flex-shrink: 0;
+}
+
+/* ============================================ */
+/* 选中即问 AI 对话框 */
+/* ============================================ */
+
+.askAIOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.askAIDialog {
+  width: 600px;
+  max-width: 90%;
+  max-height: 80vh;
+  background: linear-gradient(135deg, #1e1e2e 0%, #252540 100%);
+  border: 1px solid #3c3c5c;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 80px rgba(156, 39, 176, 0.1);
+  overflow: hidden;
+  animation: dialogSlideIn 0.3s ease-out;
+}
+
+@keyframes dialogSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.askAIHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, rgba(156, 39, 176, 0.2) 0%, rgba(103, 58, 183, 0.2) 100%);
+  border-bottom: 1px solid #3c3c5c;
+}
+
+.askAITitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  flex: 1;
+}
+
+.askAIRange {
+  font-size: 12px;
+  color: #9cdcfe;
+  background: rgba(156, 220, 254, 0.1);
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+.askAIClose {
+  background: transparent;
+  border: none;
+  color: #808080;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.askAIClose:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.askAICode {
+  max-height: 150px;
+  overflow-y: auto;
+  padding: 12px 16px;
+  background: #1a1a1a;
+  border-bottom: 1px solid #3c3c5c;
+}
+
+.askAICode pre {
+  margin: 0;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  color: #d4d4d4;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.askAIInput {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.askAIInput input {
+  flex: 1;
+  padding: 12px 16px;
+  background: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.askAIInput input:focus {
+  border-color: #9c27b0;
+  box-shadow: 0 0 12px rgba(156, 39, 176, 0.2);
+}
+
+.askAIInput input::placeholder {
+  color: #606060;
+}
+
+.askAISubmit {
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #9c27b0 0%, #673ab7 100%);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.askAISubmit:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(156, 39, 176, 0.4);
+}
+
+.askAISubmit:disabled {
+  background: #3c3c3c;
+  color: #606060;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.askAIAnswer {
+  padding: 16px;
+  background: rgba(76, 175, 80, 0.05);
+  border-top: 1px solid rgba(76, 175, 80, 0.2);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.askAIAnswerLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: #4caf50;
+  margin-bottom: 8px;
+}
+
+.askAIAnswerContent {
+  font-size: 14px;
+  color: #d4d4d4;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.askAIHints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.2);
+  border-top: 1px solid #3c3c5c;
+}
+
+.askAIHint {
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid #3c3c3c;
+  border-radius: 16px;
+  font-size: 12px;
+  color: #808080;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.askAIHint:hover {
+  background: rgba(156, 39, 176, 0.1);
+  border-color: #9c27b0;
+  color: #ce93d8;
+}
+
+/* ============================================ */
+/* 代码热力图样式 */
+/* ============================================ */
+
+/* Monaco 装饰器样式需要全局注入 */
+:global(.heatmap-line-0) { background: rgba(76, 175, 80, 0.05) !important; }
+:global(.heatmap-line-1) { background: rgba(76, 175, 80, 0.1) !important; }
+:global(.heatmap-line-2) { background: rgba(139, 195, 74, 0.1) !important; }
+:global(.heatmap-line-3) { background: rgba(205, 220, 57, 0.1) !important; }
+:global(.heatmap-line-4) { background: rgba(255, 235, 59, 0.1) !important; }
+:global(.heatmap-line-5) { background: rgba(255, 193, 7, 0.1) !important; }
+:global(.heatmap-line-6) { background: rgba(255, 152, 0, 0.1) !important; }
+:global(.heatmap-line-7) { background: rgba(255, 87, 34, 0.15) !important; }
+:global(.heatmap-line-8) { background: rgba(244, 67, 54, 0.15) !important; }
+:global(.heatmap-line-9) { background: rgba(244, 67, 54, 0.2) !important; }
+:global(.heatmap-line-10) { background: rgba(244, 67, 54, 0.25) !important; }
+
+:global(.heatmap-glyph) {
+  background: linear-gradient(90deg, #4caf50, #f44336) !important;
+  width: 4px !important;
+  margin-left: 2px !important;
+  border-radius: 2px !important;
+}
+
+/* 重构建议装饰器 */
+:global(.refactor-glyph) {
+  width: 16px !important;
+  height: 16px !important;
+  margin-left: 4px !important;
+  margin-top: 2px !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+:global(.refactor-high) {
+  background: rgba(244, 67, 54, 0.8) !important;
+}
+
+:global(.refactor-medium) {
+  background: rgba(255, 152, 0, 0.8) !important;
+}
+
+:global(.refactor-low) {
+  background: rgba(76, 175, 80, 0.8) !important;
+}
+
+/* AI 气泡装饰器 */
+:global(.bubble-glyph) {
+  width: 14px !important;
+  height: 14px !important;
+  margin-left: 4px !important;
+  margin-top: 3px !important;
+  border-radius: 50% !important;
+  animation: bubblePulse 2s ease-in-out infinite !important;
+}
+
+:global(.bubble-info) {
+  background: rgba(33, 150, 243, 0.8) !important;
+}
+
+:global(.bubble-warning) {
+  background: rgba(255, 152, 0, 0.8) !important;
+}
+
+:global(.bubble-tip) {
+  background: rgba(156, 39, 176, 0.8) !important;
+}
+
+@keyframes bubblePulse {
+  0%, 100% { opacity: 0.8; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+/* ============================================ */
+/* Monaco Editor Hover Widget 样式覆盖 */
+/* ============================================ */
+
+/* 悬浮提示框容器 */
+:global(.monaco-editor .monaco-hover) {
+  max-height: 320px !important;
+  max-width: 480px !important;
+  overflow: hidden !important;
+  z-index: 1000 !important;
+  font-size: 11px !important;
+  line-height: 1.15 !important;
+}
+
+/* 悬浮提示内容区域 - 可滚动 */
+:global(.monaco-editor .monaco-hover-content) {
+  max-height: 300px !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding-right: 4px !important;
+  font-size: 11px !important;
+  line-height: 1.15 !important;
+}
+
+/* 自定义滚动条 */
+:global(.monaco-editor .monaco-hover-content::-webkit-scrollbar) {
+  width: 4px;
+}
+
+:global(.monaco-editor .monaco-hover-content::-webkit-scrollbar-track) {
+  background: #1e1e1e;
+  border-radius: 2px;
+}
+
+:global(.monaco-editor .monaco-hover-content::-webkit-scrollbar-thumb) {
+  background: #4a4a4a;
+  border-radius: 2px;
+}
+
+:global(.monaco-editor .monaco-hover-content::-webkit-scrollbar-thumb:hover) {
+  background: #5a5a5a;
+}
+
+/* Markdown 渲染样式优化 */
+:global(.monaco-editor .monaco-hover .markdown-hover) {
+  padding: 4px 8px !important;
+  font-size: 11px !important;
+  line-height: 1.15 !important;
+}
+
+:global(.monaco-editor .monaco-hover .markdown-hover p) {
+  margin: 2px 0 !important;
+  line-height: 1.15 !important;
+  font-size: 11px !important;
+}
+
+:global(.monaco-editor .monaco-hover .markdown-hover code) {
+  background: rgba(255, 255, 255, 0.1) !important;
+  padding: 1px 4px !important;
+  border-radius: 2px !important;
+  font-size: 10px !important;
+}
+
+:global(.monaco-editor .monaco-hover .markdown-hover pre) {
+  background: #1e1e1e !important;
+  border-radius: 3px !important;
+  padding: 4px 8px !important;
+  margin: 4px 0 !important;
+  overflow-x: auto !important;
+  font-size: 10px !important;
+  line-height: 1.2 !important;
+}
+
+:global(.monaco-editor .monaco-hover .markdown-hover pre code) {
+  background: transparent !important;
+  padding: 0 !important;
+  font-size: 10px !important;
+}
+
+:global(.monaco-editor .monaco-hover .markdown-hover hr) {
+  border: none !important;
+  border-top: 1px solid #3c3c3c !important;
+  margin: 4px 0 !important;
+}
+
+:global(.monaco-editor .monaco-hover .markdown-hover strong) {
+  color: #dcdcaa !important;
+  font-size: 11px !important;
+}
+
+:global(.monaco-editor .monaco-hover .markdown-hover em) {
+  color: #9cdcfe !important;
+  font-style: italic !important;
+  font-size: 11px !important;
+}

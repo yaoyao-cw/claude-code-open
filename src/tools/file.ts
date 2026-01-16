@@ -10,6 +10,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
 import { BaseTool } from './base.js';
 import type { FileReadInput, FileWriteInput, FileEditInput, FileResult, EditToolResult, ToolDefinition } from '../types/index.js';
 import {
@@ -23,6 +24,8 @@ import {
   isPdfSupported,
   isSvgRenderEnabled,
 } from '../media/index.js';
+import { blueprintContext } from '../blueprint/index.js';
+import { persistLargeOutputSync } from './output-persistence.js';
 
 /**
  * 差异预览接口
@@ -54,11 +57,15 @@ interface ExtendedFileEditInput extends FileEditInput {
 
 /**
  * 文件读取记录接口
+ * v2.1.7: 添加 contentHash 和 fileSize 用于内容哈希检测
+ * 修复 Windows 上的 "file modified" 假错误问题
  */
 interface FileReadRecord {
   path: string;
   readTime: number;  // 读取时的时间戳
   mtime: number;     // 读取时的文件修改时间（mtimeMs）
+  contentHash: string;  // 文件内容的 SHA256 哈希值
+  fileSize: number;     // 文件大小（字节），用于快速检查
 }
 
 /**
@@ -77,13 +84,19 @@ class FileReadTracker {
     return FileReadTracker.instance;
   }
 
-  markAsRead(filePath: string, mtime: number): void {
+  /**
+   * 标记文件已被读取
+   * v2.1.7: 添加 contentHash 和 fileSize 参数用于内容哈希检测
+   */
+  markAsRead(filePath: string, mtime: number, contentHash: string, fileSize: number): void {
     // 规范化路径
     const normalizedPath = path.resolve(filePath);
     const record: FileReadRecord = {
       path: normalizedPath,
       readTime: Date.now(),
       mtime,
+      contentHash,
+      fileSize,
     };
     this.readFiles.set(normalizedPath, record);
   }
@@ -105,6 +118,14 @@ class FileReadTracker {
 
 // 导出跟踪器供外部使用
 export const fileReadTracker = FileReadTracker.getInstance();
+
+/**
+ * 计算文件内容的 SHA256 哈希值
+ * v2.1.7: 用于内容变更检测，修复 Windows 上的时间戳假错误
+ */
+function computeContentHash(content: string): string {
+  return crypto.createHash('sha256').update(content, 'utf8').digest('hex');
+}
 
 /**
  * 智能引号字符映射
@@ -365,19 +386,31 @@ Usage:
 
       // 格式化带行号的输出
       const maxLineNumWidth = String(offset + selectedLines.length).length;
-      const output = selectedLines.map((line, idx) => {
+      let output = selectedLines.map((line, idx) => {
         const lineNum = String(offset + idx + 1).padStart(maxLineNumWidth, ' ');
         const truncatedLine = line.length > 2000 ? line.substring(0, 2000) + '...' : line;
         return `${lineNum}\t${truncatedLine}`;
       }).join('\n');
 
-      // 标记文件已被读取（用于 Edit 工具验证），记录 mtime
-      fileReadTracker.markAsRead(file_path, stat.mtimeMs);
+      // 使用输出持久化处理大输出
+      const persistResult = persistLargeOutputSync(output, {
+        toolName: 'Read',
+        maxLength: 30000,
+      });
+
+      // v2.1.7: 计算内容哈希用于检测文件是否真正被修改
+      // 修复 Windows 上的 "file modified" 假错误问题
+      // 标准化换行符以确保跨平台一致性（Windows CRLF -> LF）
+      const normalizedContent = content.replaceAll('\r\n', '\n');
+      const contentHash = computeContentHash(normalizedContent);
+
+      // 标记文件已被读取（用于 Edit 工具验证），记录 mtime、内容哈希和文件大小
+      fileReadTracker.markAsRead(file_path, stat.mtimeMs, contentHash, stat.size);
 
       return {
         success: true,
-        content: output,
-        output,
+        content: persistResult.content,
+        output: persistResult.content,
         lineCount: lines.length,
       };
     } catch (err) {
@@ -590,6 +623,15 @@ Usage:
     const { file_path, content } = input;
 
     try {
+      // 蓝图边界检查（如果在蓝图执行上下文中）
+      const boundaryCheck = blueprintContext.checkFileOperation(file_path, 'write');
+      if (!boundaryCheck.allowed) {
+        return {
+          success: false,
+          error: `[蓝图边界检查] ${boundaryCheck.reason}`,
+        };
+      }
+
       // 确保目录存在
       const dir = path.dirname(file_path);
       if (!fs.existsSync(dir)) {
@@ -874,6 +916,17 @@ Usage:
         };
       }
 
+
+      // 1.5 蓝图边界检查（如果在蓝图执行上下文中）
+      const boundaryCheck = blueprintContext.checkFileOperation(file_path, 'write');
+      if (!boundaryCheck.allowed) {
+        return {
+          success: false,
+          error: `[蓝图边界检查] ${boundaryCheck.reason}`,
+          errorCode: EditErrorCode.INVALID_PATH,
+        };
+      }
+
       // 2. 验证文件是否已被读取（如果启用了此检查）
       if (this.requireFileRead && !fileReadTracker.hasBeenRead(file_path)) {
         return {
@@ -897,18 +950,40 @@ Usage:
         return { success: false, error: `Path is a directory: ${file_path}` };
       }
 
-      // 4. 检查文件是否在读取后被外部修改
-      const readRecord = fileReadTracker.getRecord(file_path);
-      if (readRecord && stat.mtimeMs > readRecord.mtime) {
-        return {
-          success: false,
-          error: 'File has been modified since it was read. Please read the file again to see the latest changes before editing.',
-          errorCode: EditErrorCode.EXTERNALLY_MODIFIED,
-        };
-      }
-
       // 5. 读取原始内容
       const originalContent = fs.readFileSync(file_path, 'utf-8');
+
+      // 4. 检查文件是否在读取后被外部修改
+      // v2.1.7: 使用内容哈希检测而不是仅依赖时间戳
+      // 修复 Windows 上的 "file modified" 假错误问题
+      const readRecord = fileReadTracker.getRecord(file_path);
+      if (readRecord && stat.mtimeMs > readRecord.mtime) {
+        // 时间戳已变化，需要检查内容是否真正被修改
+        // 首先快速检查：如果文件大小不同，则肯定被修改
+        if (stat.size !== readRecord.fileSize) {
+          return {
+            success: false,
+            error: 'File has been modified since it was read, either by the user or by a linter. Read it again before attempting to write it.',
+            errorCode: EditErrorCode.EXTERNALLY_MODIFIED,
+          };
+        }
+
+        // 文件大小相同，计算当前内容的哈希值进行比较
+        // 标准化换行符以确保跨平台一致性（Windows CRLF -> LF）
+        const normalizedContent = originalContent.replaceAll('\r\n', '\n');
+        const currentHash = computeContentHash(normalizedContent);
+
+        // 如果内容哈希不同，说明文件确实被修改了
+        if (currentHash !== readRecord.contentHash) {
+          return {
+            success: false,
+            error: 'File has been modified since it was read, either by the user or by a linter. Read it again before attempting to write it.',
+            errorCode: EditErrorCode.EXTERNALLY_MODIFIED,
+          };
+        }
+        // 如果内容哈希相同，说明只是时间戳变化但内容未变
+        // 这种情况在 Windows 上很常见，不应该报错
+      }
 
       // 6. 特殊情况：old_string 为空表示写入/覆盖整个文件
       if (old_string === '') {

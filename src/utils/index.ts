@@ -199,8 +199,320 @@ export async function openUrl(url: string): Promise<boolean> {
   }
 }
 
+/**
+ * 解析时间字符串为毫秒
+ * 支持的格式：
+ * - 纯数字: 直接作为毫秒处理
+ * - Ns/S: 秒
+ * - Nm/M: 分钟
+ * - Nh/H: 小时
+ * - Nd/D: 天
+ * - 组合格式: "1h30m", "2d12h" 等
+ *
+ * 示例：
+ * - "1000" -> 1000ms
+ * - "30s" -> 30000ms
+ * - "5m" -> 300000ms
+ * - "2h" -> 7200000ms
+ * - "1d" -> 86400000ms
+ * - "1h30m" -> 5400000ms
+ * - "2d12h30m" -> 217800000ms
+ *
+ * @param timeString 时间字符串
+ * @returns 毫秒数，如果解析失败返回 null
+ */
+export function parseDuration(timeString: string | undefined): number | null {
+  if (!timeString) return null;
+
+  const trimmed = timeString.trim();
+
+  // 纯数字直接返回（视为毫秒）
+  if (/^\d+$/.test(trimmed)) {
+    return parseInt(trimmed, 10);
+  }
+
+  // 定义时间单位映射（毫秒）
+  const unitToMs: Record<string, number> = {
+    's': 1000,
+    'm': 60 * 1000,
+    'h': 60 * 60 * 1000,
+    'd': 24 * 60 * 60 * 1000,
+  };
+
+  // 匹配所有时间组件（如 "2h", "30m" 等）
+  const pattern = /(\d+(?:\.\d+)?)(s|m|h|d)/gi;
+  const matches = trimmed.matchAll(pattern);
+
+  let totalMs = 0;
+  let hasMatch = false;
+
+  for (const match of matches) {
+    hasMatch = true;
+    const value = parseFloat(match[1]);
+    const unit = match[2].toLowerCase();
+    const multiplier = unitToMs[unit];
+
+    if (multiplier) {
+      totalMs += value * multiplier;
+    }
+  }
+
+  // 如果没有匹配到任何时间单位，返回 null
+  if (!hasMatch) {
+    return null;
+  }
+
+  return Math.round(totalMs);
+}
+
+/**
+ * 解析超时时间字符串
+ * 与 parseDuration 类似，但有最大值限制
+ *
+ * @param timeString 时间字符串
+ * @param defaultMs 默认值（毫秒）
+ * @param maxMs 最大值（毫秒），默认 10 分钟
+ * @returns 毫秒数
+ */
+export function parseTimeout(
+  timeString: string | undefined,
+  defaultMs: number = 120000,
+  maxMs: number = 600000
+): number {
+  const parsed = parseDuration(timeString);
+
+  if (parsed === null) {
+    return defaultMs;
+  }
+
+  return Math.min(parsed, maxMs);
+}
+
+/**
+ * MCP 输出 Token 限制
+ * 从环境变量读取或使用默认值
+ */
+export const MAX_MCP_OUTPUT_TOKENS = (): number => {
+  const envValue = process.env.MAX_MCP_OUTPUT_TOKENS;
+  if (envValue) {
+    const parsed = parseInt(envValue, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return 25000; // 官方默认值
+};
+
+/**
+ * 计算 MCP 输出的最大字符数
+ * 大约每个 token 对应 4 个字符
+ */
+export const getMaxMcpOutputChars = (): number => {
+  return MAX_MCP_OUTPUT_TOKENS() * 4;
+};
+
+/**
+ * 截断 MCP 输出以符合 token 限制
+ *
+ * @param output 原始输出
+ * @param maxTokens 最大 token 数（可选，默认使用环境变量或 25000）
+ * @returns 截断后的输出
+ */
+export function truncateMcpOutput(output: string, maxTokens?: number): string {
+  const limit = maxTokens ?? MAX_MCP_OUTPUT_TOKENS();
+  const maxChars = limit * 4;
+
+  if (output.length <= maxChars) {
+    return output;
+  }
+
+  // 保留开头和结尾，中间用省略号
+  const keepStart = Math.floor(maxChars * 0.7);
+  const keepEnd = Math.floor(maxChars * 0.25);
+
+  const start = output.substring(0, keepStart);
+  const end = output.substring(output.length - keepEnd);
+
+  const omittedChars = output.length - keepStart - keepEnd;
+  const omittedTokens = Math.ceil(omittedChars / 4);
+
+  return `${start}\n\n... [${omittedChars} characters / ~${omittedTokens} tokens omitted] ...\n\n${end}`;
+}
+
+/**
+ * 检查命令是否存在于系统 PATH 中
+ * @param command - 要检查的命令
+ * @returns boolean - 命令是否存在
+ */
+export function commandExists(command: string): boolean {
+  const { execSync } = require('child_process') as typeof import('child_process');
+  try {
+    const whichCmd = process.platform === 'win32' ? 'where' : 'which';
+    execSync(`${whichCmd} ${command}`, { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 获取系统默认编辑器
+ * 优先级：$VISUAL > $EDITOR > 系统默认编辑器
+ * @returns string | null - 编辑器命令或 null
+ */
+export function getDefaultEditor(): string | null {
+  // 首先检查 VISUAL 环境变量
+  if (process.env.VISUAL?.trim()) {
+    return process.env.VISUAL.trim();
+  }
+
+  // 然后检查 EDITOR 环境变量
+  if (process.env.EDITOR?.trim()) {
+    return process.env.EDITOR.trim();
+  }
+
+  // Windows 使用 notepad
+  if (process.platform === 'win32') {
+    return 'notepad';
+  }
+
+  // Unix/macOS 尝试常见编辑器
+  const commonEditors = ['code', 'vi', 'nano', 'vim'];
+  for (const editor of commonEditors) {
+    if (commandExists(editor)) {
+      return editor;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 外部编辑器打开结果
+ */
+export interface ExternalEditorResult {
+  success: boolean;
+  content?: string;
+  error?: string;
+}
+
+/**
+ * 在外部编辑器中打开文件
+ * @param filePath - 要打开的文件路径
+ * @returns Promise<ExternalEditorResult> - 打开结果
+ */
+export async function openInExternalEditor(filePath: string): Promise<ExternalEditorResult> {
+  const { execSync } = require('child_process') as typeof import('child_process');
+  const editor = getDefaultEditor();
+
+  if (!editor) {
+    return {
+      success: false,
+      error: 'No editor available. Please set $EDITOR or $VISUAL environment variable.',
+    };
+  }
+
+  try {
+    // 同步执行编辑器命令，等待编辑器关闭
+    // Windows 使用 cmd.exe，Unix 使用默认 shell
+    const shellOption = process.platform === 'win32' ? 'cmd.exe' : '/bin/sh';
+    execSync(`${editor} "${filePath}"`, {
+      stdio: 'inherit',
+      shell: shellOption,
+    });
+
+    // 读取编辑后的内容
+    const fsPromises = require('fs/promises') as typeof import('fs/promises');
+    const content = await fsPromises.readFile(filePath, 'utf-8');
+
+    return {
+      success: true,
+      content,
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      error: `Failed to launch editor: ${errorMessage}`,
+    };
+  }
+}
+
+/**
+ * 创建临时文件用于外部编辑器
+ * @param content - 初始内容
+ * @param extension - 文件扩展名（默认 .md）
+ * @returns Promise<string> - 临时文件路径
+ */
+export async function createTempFileForEditor(
+  content: string = '',
+  extension: string = '.md'
+): Promise<string> {
+  const os = require('os') as typeof import('os');
+  const path = require('path') as typeof import('path');
+  const fsPromises = require('fs/promises') as typeof import('fs/promises');
+
+  const tempDir = os.tmpdir();
+  const tempFileName = `claude-code-${Date.now()}${extension}`;
+  const tempFilePath = path.join(tempDir, tempFileName);
+
+  await fsPromises.writeFile(tempFilePath, content, 'utf-8');
+
+  return tempFilePath;
+}
+
+/**
+ * 使用外部编辑器编辑内容
+ * @param initialContent - 初始内容
+ * @returns Promise<ExternalEditorResult> - 编辑结果
+ */
+export async function editInExternalEditor(initialContent: string = ''): Promise<ExternalEditorResult> {
+  const fsPromises = require('fs/promises') as typeof import('fs/promises');
+
+  try {
+    // 创建临时文件
+    const tempFilePath = await createTempFileForEditor(initialContent);
+
+    // 打开编辑器
+    const result = await openInExternalEditor(tempFilePath);
+
+    // 清理临时文件（无论成功与否）
+    try {
+      await fsPromises.unlink(tempFilePath);
+    } catch {
+      // 忽略删除失败
+    }
+
+    return result;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      error: `Failed to create temp file: ${errorMessage}`,
+    };
+  }
+}
+
 // Re-export attribution utilities
 export { getAttribution, getCommitAttribution, getPRAttribution, isAttributionEnabled } from './attribution.js';
 
 // Re-export git helper utilities
 export { addCommitAttribution, isGitCommitCommand, processGitCommitCommand, hasCommitAttribution } from './git-helper.js';
+
+// Re-export package manager utilities
+export {
+  isHomebrewInstallation,
+  isWingetInstallation,
+  detectPackageManager,
+  detectInstallationType,
+  getUpdateCommand,
+  getUpdateInstructions,
+  getPackageManagerInfo,
+  clearPackageManagerCache,
+  getPackageManagerDiagnostics,
+  formatPackageManagerDiagnostics,
+  type PackageManagerType,
+  type InstallationType,
+  type PackageManagerInfo,
+  type UpdateInstructions,
+} from './package-manager.js';

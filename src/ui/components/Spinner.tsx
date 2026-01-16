@@ -23,6 +23,8 @@ const SPINNER_TYPES = {
   arrow: ['←', '↖', '↑', '↗', '→', '↘', '↓', '↙'],
   bouncingBar: ['[    ]', '[=   ]', '[==  ]', '[=== ]', '[ ===]', '[  ==]', '[   =]', '[    ]', '[   =]', '[  ==]', '[ ===]', '[====]'],
   bouncingBall: ['( ●    )', '(  ●   )', '(   ●  )', '(    ● )', '(     ●)', '(    ● )', '(   ●  )', '(  ●   )', '( ●    )', '(●     )'],
+  // v2.1.7: 终端标题专用等宽 braille 字符，避免标题宽度变化导致的抖动
+  terminalTitle: ['⠂', '⠐'],
 };
 
 // 状态类型
@@ -54,6 +56,8 @@ export interface SpinnerProps {
   showElapsed?: boolean;
   startTime?: number;
   dimLabel?: boolean;
+  /** v2.1.0 改进：等待首个 token 的特殊状态 */
+  waitingForFirstToken?: boolean;
 }
 
 export const Spinner: React.FC<SpinnerProps> = React.memo(({
@@ -65,9 +69,12 @@ export const Spinner: React.FC<SpinnerProps> = React.memo(({
   showElapsed = false,
   startTime = Date.now(),
   dimLabel = false,
+  waitingForFirstToken = false,
 }) => {
   const [frame, setFrame] = useState(0);
   const [elapsed, setElapsed] = useState(0);
+  // v2.1.0 改进：等待首个 token 时使用脉冲效果
+  const [pulsePhase, setPulsePhase] = useState(0);
 
   const frames = SPINNER_TYPES[type] || SPINNER_TYPES.dots;
   const displayColor = color || STATUS_COLORS[status];
@@ -94,6 +101,17 @@ export const Spinner: React.FC<SpinnerProps> = React.memo(({
     return () => clearInterval(timer);
   }, [showElapsed, startTime]);
 
+  // v2.1.0 改进：等待首个 token 时的脉冲动画
+  useEffect(() => {
+    if (!waitingForFirstToken) return;
+
+    const timer = setInterval(() => {
+      setPulsePhase((prev) => (prev + 1) % 3);
+    }, 500);
+
+    return () => clearInterval(timer);
+  }, [waitingForFirstToken]);
+
   const formatElapsed = (ms: number): string => {
     const seconds = Math.floor(ms / 1000);
     const minutes = Math.floor(seconds / 60);
@@ -112,11 +130,16 @@ export const Spinner: React.FC<SpinnerProps> = React.memo(({
     ? frames[frame]
     : STATUS_ICONS[status] || frames[frame];
 
+  // v2.1.0 改进：等待首个 token 时的特殊显示
+  const waitingLabel = waitingForFirstToken
+    ? `Waiting for response${'.'.repeat(pulsePhase + 1)}`
+    : label;
+
   return (
     <Box>
       <Text color={displayColor}>{icon}</Text>
-      {label && (
-        <Text dimColor={dimLabel}> {label}</Text>
+      {waitingLabel && (
+        <Text dimColor={dimLabel || waitingForFirstToken}> {waitingLabel}</Text>
       )}
       {progress !== undefined && (
         <Text dimColor> ({Math.round(progress)}%)</Text>

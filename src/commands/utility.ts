@@ -8,6 +8,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { generateTerminalConfig, detectTerminalType, formatConfigAsMarkdown } from '../utils/terminal-setup.js';
+import React from 'react';
+import { SkillsDialog } from '../ui/components/SkillsDialog.js';
+import { StatsPanel } from '../ui/components/StatsPanel.js';
+import { isDemoMode } from '../utils/env-check.js';
 
 // /cost - 费用统计 (官方风格)
 export const costCommand: SlashCommand = {
@@ -43,7 +47,7 @@ export const costCommand: SlashCommand = {
     costInfo += `  Sonnet 4: $3/$15 per 1M tokens (in/out)\n`;
     costInfo += `  Haiku 3.5: $0.25/$1.25 per 1M tokens (in/out)\n\n`;
 
-    costInfo += `For detailed billing: https://console.anthropic.com/billing`;
+    costInfo += `For detailed billing: https://platform.claude.com/billing`;
 
     ctx.ui.addMessage('assistant', costInfo);
     return { success: true };
@@ -76,7 +80,7 @@ Usage Limits:
   claude.ai: Plan-based limits
 
 To check API limits:
-  https://console.anthropic.com/settings
+  https://platform.claude.com/settings
 
 To check claude.ai limits:
   https://claude.ai/settings
@@ -490,7 +494,7 @@ Fun fact: The mascot's name is "Clawd"!`;
   },
 };
 
-// /skills - 技能列表 (官方风格 - 扫描实际可用技能)
+// /skills - 技能列表 (官方风格 - 交互式对话框)
 export const skillsCommand: SlashCommand = {
   name: 'skills',
   description: 'List available skills',
@@ -498,168 +502,42 @@ export const skillsCommand: SlashCommand = {
   execute: (ctx: CommandContext): CommandResult => {
     const { config } = ctx;
 
-    // 扫描技能目录
-    const globalSkillsDir = path.join(os.homedir(), '.claude', 'skills');
-    const projectSkillsDir = path.join(config.cwd, '.claude', 'commands');
+    // 返回 JSX 组件，由 App.tsx 显示为交互式对话框
+    // App.tsx 会通过 React.cloneElement 注入 onDone 回调
+    const jsx = React.createElement(SkillsDialog, {
+      cwd: config.cwd,
+    });
 
-    const globalSkills: string[] = [];
-    const projectSkills: string[] = [];
-
-    // 扫描全局技能
-    if (fs.existsSync(globalSkillsDir)) {
-      try {
-        const files = fs.readdirSync(globalSkillsDir);
-        for (const file of files) {
-          if (file.endsWith('.md')) {
-            globalSkills.push(file.replace('.md', ''));
-          }
-        }
-      } catch {
-        // 忽略错误
-      }
-    }
-
-    // 扫描项目技能
-    if (fs.existsSync(projectSkillsDir)) {
-      try {
-        const files = fs.readdirSync(projectSkillsDir);
-        for (const file of files) {
-          if (file.endsWith('.md')) {
-            projectSkills.push(file.replace('.md', ''));
-          }
-        }
-      } catch {
-        // 忽略错误
-      }
-    }
-
-    // 内置技能
-    const builtInSkills = [
-      { name: 'session-start-hook', desc: 'Set up SessionStart hooks for projects' },
-    ];
-
-    let skillsInfo = `Available Skills
-
-`;
-
-    // 内置技能
-    skillsInfo += `Built-in Skills:\n`;
-    for (const skill of builtInSkills) {
-      skillsInfo += `  ${skill.name.padEnd(22)} ${skill.desc}\n`;
-    }
-
-    // 全局技能
-    skillsInfo += `\nGlobal Skills (${globalSkillsDir}):\n`;
-    if (globalSkills.length > 0) {
-      for (const skill of globalSkills) {
-        skillsInfo += `  ${skill}\n`;
-      }
-    } else {
-      skillsInfo += `  (none)\n`;
-    }
-
-    // 项目技能
-    skillsInfo += `\nProject Skills (${projectSkillsDir}):\n`;
-    if (projectSkills.length > 0) {
-      for (const skill of projectSkills) {
-        skillsInfo += `  ${skill}\n`;
-      }
-    } else {
-      skillsInfo += `  (none)\n`;
-    }
-
-    skillsInfo += `
-Creating Skills:
-  Skills are markdown files that expand into prompts.
-
-  Example ~/.claude/skills/my-skill.md:
-    # My Skill
-    This skill helps with...
-
-    ## Instructions
-    When using this skill...
-
-Usage:
-  Ask Claude to use a skill by name, or invoke with:
-    "use the <skill-name> skill"`;
-
-    ctx.ui.addMessage('assistant', skillsInfo);
-    return { success: true };
+    return {
+      success: true,
+      action: 'showJsx',
+      jsx,
+      shouldHidePromptInput: true,
+    };
   },
 };
 
-// /stats - 使用统计 (官方风格 - 显示真实统计数据)
+// /stats - 使用统计 (官方风格 v2.1.6+: 交互式统计面板)
+// 支持按 r 键循环切换日期范围: Last 7 days / Last 30 days / All time
 export const statsCommand: SlashCommand = {
   name: 'stats',
   description: 'Show your Claude Code usage statistics and activity',
   category: 'utility',
   execute: (ctx: CommandContext): CommandResult => {
-    const stats = ctx.session.getStats();
-    const durationMins = Math.floor(stats.duration / 60000);
-    const durationSecs = Math.floor((stats.duration % 60000) / 1000);
+    // v2.1.6+: 返回交互式 JSX 组件，由 App.tsx 显示为交互式对话框
+    // 用户可以按 r 键在日期范围间循环: Last 7 days / Last 30 days / All time
+    // 用户可以按 Tab 键在 Overview 和 Models 标签间切换
+    const jsx = React.createElement(StatsPanel, {
+      sessionStats: ctx.session.getStats(),
+      modelDisplayName: ctx.config.modelDisplayName,
+    });
 
-    // 尝试获取会话历史统计
-    const sessionsDir = path.join(os.homedir(), '.claude', 'sessions');
-    let totalSessions = 0;
-    let totalMessages = 0;
-
-    if (fs.existsSync(sessionsDir)) {
-      try {
-        const files = fs.readdirSync(sessionsDir).filter(f => f.endsWith('.json'));
-        totalSessions = files.length;
-
-        // 统计最近几个会话的消息数
-        for (const file of files.slice(-10)) {
-          try {
-            const sessionPath = path.join(sessionsDir, file);
-            const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
-            totalMessages += sessionData.messages?.length || 0;
-          } catch {
-            // 忽略解析错误
-          }
-        }
-      } catch {
-        // 忽略目录读取错误
-      }
-    }
-
-    let statsInfo = `╭─ Claude Code Statistics ────────────────────────────╮
-│                                                     │
-│  Current Session                                    │
-│    Session ID: ${ctx.session.id.substring(0, 8)}...                          │
-│    Messages:   ${String(stats.messageCount).padEnd(36)}│
-│    Duration:   ${durationMins}m ${durationSecs}s${' '.repeat(Math.max(0, 32 - String(durationMins).length - String(durationSecs).length))}│
-│    Est. Cost:  ${stats.totalCost.padEnd(36)}│
-│                                                     │
-│  Token Usage                                        │`;
-
-    // 显示模型使用情况
-    const modelUsage = stats.modelUsage || {};
-    if (Object.keys(modelUsage).length > 0) {
-      for (const [model, tokens] of Object.entries(modelUsage)) {
-        const modelName = model.includes('sonnet') ? 'Sonnet' :
-                         model.includes('opus') ? 'Opus' :
-                         model.includes('haiku') ? 'Haiku' : model;
-        statsInfo += `\n│    ${modelName.padEnd(12)} ${String(tokens).toLocaleString().padEnd(27)}│`;
-      }
-    } else {
-      statsInfo += `\n│    (no token data yet)                              │`;
-    }
-
-    statsInfo += `
-│                                                     │
-│  Historical Data                                    │
-│    Total Sessions: ${String(totalSessions).padEnd(32)}│
-│    Recent Messages: ${String(totalMessages).padEnd(31)}│
-│                                                     │
-│  Model: ${ctx.config.modelDisplayName.padEnd(43)}│
-│                                                     │
-╰─────────────────────────────────────────────────────╯
-
-For detailed billing: https://console.anthropic.com/billing`;
-
-    ctx.ui.addMessage('assistant', statsInfo);
-    return { success: true };
+    return {
+      success: true,
+      action: 'showJsx',
+      jsx,
+      shouldHidePromptInput: true,
+    };
   },
 };
 
@@ -895,6 +773,36 @@ export const terminalSetupCommand: SlashCommand = {
   },
 };
 
+// /mobile - 移动端连接（显示 QR 码）
+export const mobileCommand: SlashCommand = {
+  name: 'mobile',
+  description: 'Show QR code for mobile connection',
+  category: 'utility',
+  execute: (ctx: CommandContext): CommandResult => {
+    // 生成一个简单的 ASCII QR 码或者显示说明
+    const mobileInfo = `Mobile Connection
+
+Claude Code mobile integration is coming soon!
+
+Current status: Beta
+
+To use Claude on mobile:
+  1. Visit claude.ai on your mobile browser
+  2. Login with your account
+  3. Your conversations will sync across devices
+
+Future features:
+  • QR code to link mobile device
+  • Push notifications for long-running tasks
+  • Remote monitoring of agent progress
+
+Stay tuned for updates!`;
+
+    ctx.ui.addMessage('assistant', mobileInfo);
+    return { success: true };
+  },
+};
+
 // 注册所有工具命令
 export function registerUtilityCommands(): void {
   commandRegistry.register(costCommand);
@@ -909,4 +817,5 @@ export function registerUtilityCommands(): void {
   commandRegistry.register(thinkBackCommand);
   commandRegistry.register(thinkbackPlayCommand);
   commandRegistry.register(terminalSetupCommand);
+  commandRegistry.register(mobileCommand);
 }

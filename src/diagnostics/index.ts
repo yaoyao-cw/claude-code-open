@@ -7,7 +7,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as child_process from 'child_process';
+const { exec } = child_process;
 import { detectProvider, validateProviderConfig } from '../providers/index.js';
+import {
+  getPackageManagerInfo,
+  getUpdateInstructions,
+  formatPackageManagerDiagnostics,
+  type PackageManagerInfo,
+} from '../utils/package-manager.js';
 
 export interface DiagnosticCheck {
   name: string;
@@ -71,7 +78,7 @@ export async function runDiagnostics(options: DiagnosticOptions = {}): Promise<D
   checks.push(await checkYarnVersion());
   checks.push(await checkGitAvailability());
   checks.push(await checkRipgrepAvailability());
-  checks.push(await checkTreeSitterAvailability());
+  checks.push(await checkLSPAvailability());
 
   // Configuration checks
   checks.push(await checkAuthConfiguration());
@@ -95,6 +102,9 @@ export async function runDiagnostics(options: DiagnosticOptions = {}): Promise<D
   // Performance checks
   checks.push(await checkMemoryUsage());
   checks.push(await checkCPULoad());
+
+  // Package manager check
+  checks.push(await checkPackageManager());
 
   // Calculate summary
   const summary = {
@@ -229,34 +239,28 @@ async function checkRipgrepAvailability(): Promise<DiagnosticCheck> {
 }
 
 /**
- * Check tree-sitter availability
+ * Check LSP availability (TypeScript Language Server)
  */
-async function checkTreeSitterAvailability(): Promise<DiagnosticCheck> {
-  try {
-    // Check if tree-sitter-wasms is available in node_modules
-    const treeSitterPath = path.join(__dirname, '../../node_modules/tree-sitter-wasms');
-    if (fs.existsSync(treeSitterPath)) {
-      return {
-        name: 'Tree-sitter',
-        status: 'pass',
-        message: 'tree-sitter-wasms available',
-      };
-    } else {
-      return {
-        name: 'Tree-sitter',
-        status: 'warn',
-        message: 'tree-sitter-wasms not found',
-        details: 'Code parsing may not work properly',
-        fix: 'Run: npm install tree-sitter-wasms',
-      };
-    }
-  } catch {
-    return {
-      name: 'Tree-sitter',
-      status: 'warn',
-      message: 'Could not check tree-sitter',
-    };
-  }
+async function checkLSPAvailability(): Promise<DiagnosticCheck> {
+  return new Promise((resolve) => {
+    exec('typescript-language-server --version', { timeout: 5000 }, (error, stdout) => {
+      if (error) {
+        resolve({
+          name: 'LSP',
+          status: 'warn',
+          message: 'TypeScript Language Server not found',
+          details: 'Code parsing will use fallback regex mode',
+          fix: 'Run: npm install -g typescript-language-server typescript',
+        });
+      } else {
+        resolve({
+          name: 'LSP',
+          status: 'pass',
+          message: `typescript-language-server ${stdout.trim()}`,
+        });
+      }
+    });
+  });
 }
 
 /**
@@ -894,6 +898,41 @@ async function checkMemoryUsage(): Promise<DiagnosticCheck> {
       name: 'Memory Usage',
       status: 'pass',
       message: `${percentUsed.toFixed(1)}% (${memInfo.used} / ${memInfo.total})`,
+    };
+  }
+}
+
+/**
+ * Check package manager and installation type
+ * 检测安装方式（homebrew/winget/npm）并显示更新命令
+ */
+async function checkPackageManager(): Promise<DiagnosticCheck> {
+  try {
+    const info = getPackageManagerInfo();
+    const instructions = getUpdateInstructions(info.packageManager);
+
+    // 构建详细信息
+    const details = [
+      `Installation Type: ${info.installationType}`,
+      `Exec Path: ${info.execPath}`,
+      `Update Command: ${info.updateCommand}`,
+    ].join('\n    ');
+
+    return {
+      name: 'Package Manager',
+      status: 'pass',
+      message: `Installed via ${instructions.managerName}`,
+      details: details,
+      fix: info.canAutoUpdate
+        ? 'Run "claude update" to update automatically'
+        : `Run "${info.updateCommand}" to update`,
+    };
+  } catch (err) {
+    return {
+      name: 'Package Manager',
+      status: 'warn',
+      message: 'Could not detect package manager',
+      details: String(err),
     };
   }
 }

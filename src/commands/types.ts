@@ -2,6 +2,8 @@
  * 斜杠命令类型定义
  */
 
+import type React from 'react';
+
 export interface CommandContext {
   // 会话相关
   session: {
@@ -31,6 +33,9 @@ export interface CommandContext {
       status: 'pending' | 'in_progress' | 'completed';
       activeForm: string;
     }>) => void;
+    // 标签管理 (用于 /tag 命令)
+    getTags?: () => string[];
+    setTags?: (tags: string[]) => void;
     // 文件状态跟踪 (官方实现 - 用于 /files 命令)
     readFileState?: Map<string, any> | Record<string, any> | string[];
   };
@@ -65,8 +70,12 @@ export interface CommandContext {
 export interface CommandResult {
   success: boolean;
   message?: string;
-  action?: 'exit' | 'clear' | 'reload' | 'login' | 'logout' | 'reinitClient' | 'none';
+  action?: 'exit' | 'clear' | 'reload' | 'login' | 'logout' | 'reinitClient' | 'showJsx' | 'none';
   data?: any;
+  // 官方 local-jsx 类型支持：命令可以返回一个 JSX 组件在主 UI 中显示
+  jsx?: React.ReactElement;
+  // 是否隐藏输入框（显示 JSX 时通常需要）
+  shouldHidePromptInput?: boolean;
 }
 
 export interface SlashCommand {
@@ -85,7 +94,8 @@ export type CommandCategory =
   | 'tools'
   | 'auth'
   | 'utility'
-  | 'development';
+  | 'development'
+  | 'settings';
 
 export interface CommandRegistry {
   commands: Map<string, SlashCommand>;

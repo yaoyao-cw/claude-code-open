@@ -2,7 +2,7 @@
 
 /**
  * Claude Code CLI 入口点
- * 还原版本 2.0.76 - 完整功能版
+ * 还原版本 2.1.4 - 完整功能版
  */
 
 import { Command, Option } from 'commander';
@@ -24,18 +24,85 @@ import { runHooks } from './hooks/index.js';
 import { scheduleCleanup } from './session/cleanup.js';
 import { createPluginCommand } from './plugins/cli.js';
 import type { PermissionMode, OutputFormat, InputFormat } from './types/index.js';
+import { VERSION_FULL } from './version.js';
+import { resetTerminalTitle } from './utils/platform.js';
+import { disconnectAllMcpServers } from './tools/mcp.js';
 
 // 工作目录列表
 const additionalDirectories: string[] = [];
 
-const VERSION = '2.0.76-restored';
+// 全局 MCP 进程清理标志，防止重复清理
+let mcpCleanupScheduled = false;
+
+/**
+ * 确保所有 MCP 服务器进程在程序退出前被正确清理
+ *
+ * 这个函数会在以下情况被调用：
+ * 1. 正常退出 (beforeExit)
+ * 2. 收到 SIGINT/SIGTERM 信号
+ * 3. 发生未捕获的异常
+ * 4. mcp list --status 或 mcp get --status 命令完成后
+ *
+ * v2.1.6 修复: 防止 mcp list 和 mcp get 命令留下孤儿进程
+ *
+ * @param resetFlag 是否在清理后重置标志，允许后续再次清理（用于命令级清理）
+ */
+async function cleanupMcpServers(resetFlag = false): Promise<void> {
+  if (mcpCleanupScheduled && !resetFlag) return;
+  mcpCleanupScheduled = true;
+
+  try {
+    await disconnectAllMcpServers();
+  } catch (err) {
+    // 静默处理清理错误，避免干扰用户
+    if (process.env.DEBUG) {
+      console.error('[MCP] Cleanup error:', err);
+    }
+  }
+
+  // 如果是命令级清理，重置标志以允许后续清理
+  if (resetFlag) {
+    mcpCleanupScheduled = false;
+  }
+}
+
+// 注册进程退出时的 MCP 清理
+process.on('beforeExit', async () => {
+  await cleanupMcpServers();
+});
+
+// 注册 SIGINT 信号处理（Ctrl+C）
+process.on('SIGINT', async () => {
+  await cleanupMcpServers();
+  process.exit(0);
+});
+
+// 注册 SIGTERM 信号处理
+process.on('SIGTERM', async () => {
+  await cleanupMcpServers();
+  process.exit(0);
+});
+
+// 注册未捕获异常处理
+process.on('uncaughtException', async (err) => {
+  console.error('Uncaught exception:', err);
+  await cleanupMcpServers();
+  process.exit(1);
+});
+
+// 注册未处理的 Promise 拒绝
+process.on('unhandledRejection', async (reason, promise) => {
+  console.error('Unhandled rejection at:', promise, 'reason:', reason);
+  await cleanupMcpServers();
+  process.exit(1);
+});
 
 const program = new Command();
 
 program
   .name('claude')
   .description('Claude Code - starts an interactive session by default, use -p/--print for non-interactive output')
-  .version(VERSION, '-v, --version', 'Output the version number');
+  .version(VERSION_FULL, '-v, --version', 'Output the version number');
 
 // 主命令 - 交互模式
 program
@@ -111,6 +178,9 @@ program
     // T504: action_handler_start - Action 处理器开始
     await emitLifecycleEvent('action_handler_start');
 
+    // v2.1.6: 设置终端标题为 "Claude Code"
+    resetTerminalTitle();
+
     // ✅ 启动时自动清理过期数据（异步，不阻塞）
     scheduleCleanup();
 
@@ -126,7 +196,8 @@ program
 
     // 检查是否需要显示登录选择器
     // 只在没有 prompt 且没有认证凭据时显示
-    if (!prompt && !options.print && !options.text) {
+    // v2.1.6: 添加 resume 检查，避免 --resume 时登录菜单闪现
+    if (!prompt && !options.print && !options.text && options.resume === undefined) {
       const { shouldShowLoginSelector } = await import('./ui/LoginSelector.js');
 
       if (shouldShowLoginSelector()) {
@@ -158,12 +229,73 @@ program
       loadMcpConfigs(options.mcpConfig);
     }
 
+    // 加载 Chrome 集成配置（如果启用）
+    // 与官方实现一致：在启动时自动检测并加载 Chrome MCP
+    let chromeSystemPrompt: string | undefined;
+    try {
+      const { getChromeIntegrationConfig } = await import('./chrome-mcp/index.js');
+      // options.chrome 可能是 true（--chrome）、false（--no-chrome）或 undefined
+      const chromeConfig = await getChromeIntegrationConfig(options.chrome);
+
+      if (chromeConfig) {
+        // 导入 MCP 注册函数和 Chrome 工具定义
+        const { registerMcpServer, registerMcpToolsToRegistry } = await import('./tools/mcp.js');
+        const { toolRegistry } = await import('./tools/index.js');
+        const { CHROME_MCP_TOOLS } = await import('./chrome-mcp/tools.js');
+
+        // 添加 Chrome MCP 服务器配置并注册到 MCP 系统
+        for (const [name, config] of Object.entries(chromeConfig.mcpConfig)) {
+          // 保存到配置文件（持久化）
+          try {
+            configManager.addMcpServer(name, config as any);
+          } catch {
+            // 可能已存在，忽略
+          }
+
+          // 注册到 MCP 服务器映射（运行时），使用预加载的工具定义
+          // 这样工具可以立即被发现，无需连接 MCP 服务器
+          registerMcpServer(name, config as any, CHROME_MCP_TOOLS as any);
+
+          // 将工具直接注册到 ToolRegistry，这样 AI 可以直接调用它们
+          registerMcpToolsToRegistry(name, CHROME_MCP_TOOLS as any, toolRegistry);
+        }
+
+        // 保存 Chrome 系统提示以便后续合并
+        chromeSystemPrompt = chromeConfig.systemPrompt;
+
+        if (options.verbose) {
+          console.log(chalk.dim('[Chrome] Browser automation tools loaded'));
+        }
+      }
+    } catch (error) {
+      // Chrome 集成失败不应该阻止程序运行
+      if (options.debug) {
+        console.warn(chalk.yellow('[Chrome] Failed to load browser integration:'), error);
+      }
+    }
+
     // T507: action_mcp_configs_loaded - MCP 配置加载完成
     await emitLifecycleEvent('action_mcp_configs_loaded');
     await runHooks({ event: 'McpConfigsLoaded' });
 
+    // 【与官方一致】自动加载并连接所有配置的 MCP 服务器
+    // 官方逻辑：在 useManageMcpConnections hook 中，自动加载所有配置的 MCP 服务器并连接
+    // 除非服务器在 disabledMcpServers 列表中
+    try {
+      await initializeAllMcpServers(options.verbose, options.strictMcpConfig);
+    } catch (error) {
+      if (options.debug) {
+        console.warn(chalk.yellow('[MCP] Failed to initialize some MCP servers:'), error);
+      }
+    }
+
     // 构建系统提示
     let systemPrompt = options.systemPrompt;
+
+    // 如果 Chrome 集成已启用，添加 Chrome 系统提示
+    if (chromeSystemPrompt) {
+      systemPrompt = systemPrompt ? `${chromeSystemPrompt}\n\n${systemPrompt}` : chromeSystemPrompt;
+    }
 
     // 处理 --system-prompt-file（互斥性已在前面验证）
     if (options.systemPromptFile) {
@@ -330,6 +462,9 @@ program
 
     // 打印模式 (JSON 格式支持) - 不使用 TUI
     if (options.print && prompt) {
+      // 从配置管理器获取完整配置（包括环境变量）
+      const config = configManager.getAll();
+
       const loop = new ConversationLoop({
         model: modelMap[options.model] || options.model,
         maxTokens: parseInt(options.maxTokens),
@@ -338,6 +473,12 @@ program
         permissionMode: options.permissionMode as PermissionMode,
         allowedTools: options.allowedTools,
         disallowedTools: options.disallowedTools,
+        // 传递 Extended Thinking 配置
+        thinking: config.thinking,
+        // 传递回退模型配置
+        fallbackModel: options.fallbackModel || config.fallbackModel,
+        // 传递调试配置
+        debug: options.debug || config.debug,
       });
 
       const outputFormat = options.outputFormat as OutputFormat;
@@ -417,7 +558,7 @@ async function runTextInterface(
   const LOGO = `
 ╭─────────────────────────────────────────────────────╮
 │                                                     │
-│   ${claudeColor('Claude Code')} ${chalk.gray('v' + VERSION)}                           │
+│   ${claudeColor('Claude Code')} ${chalk.gray('v' + VERSION_FULL)}                           │
 │                                                     │
 │        ${claudeColor('*')}       ${claudeColor('*')}                                 │
 │      ${claudeColor('*')}  ${claudeColor(' ▐')}${claudeColor.bgBlack('▛███▜')}${claudeColor('▌')}  ${claudeColor('*')}                            │
@@ -431,6 +572,9 @@ async function runTextInterface(
 
   console.log(LOGO);
 
+  // 从配置管理器获取完整配置（包括环境变量）
+  const config = configManager.getAll();
+
   const loop = new ConversationLoop({
     model: modelMap[options.model] || options.model,
     maxTokens: parseInt(options.maxTokens),
@@ -439,6 +583,12 @@ async function runTextInterface(
     permissionMode: options.permissionMode as PermissionMode,
     allowedTools: options.allowedTools,
     disallowedTools: options.disallowedTools,
+    // 传递 Extended Thinking 配置
+    thinking: config.thinking,
+    // 传递回退模型配置
+    fallbackModel: options.fallbackModel || config.fallbackModel,
+    // 传递调试配置
+    debug: options.debug || config.debug,
   });
 
   // 恢复会话逻辑
@@ -594,10 +744,84 @@ async function runTextInterface(
 // MCP 子命令
 const mcpCommand = program.command('mcp').description('Configure and manage MCP servers');
 
+// serve 命令 - 启动 Claude Code MCP 服务器
+mcpCommand
+  .command('serve')
+  .description('Start the Claude Code MCP server')
+  .option('-p, --port <port>', 'Port to listen on', '3000')
+  .option('--stdio', 'Use stdio transport instead of HTTP')
+  .action(async (options) => {
+    console.log(chalk.bold('\n🚀 Starting Claude Code MCP Server\n'));
+
+    // MCP Server 功能 - 占位实现
+    console.log(chalk.cyan(`Transport: ${options.stdio ? 'stdio' : `HTTP on port ${options.port}`}`));
+    console.log();
+    console.log(chalk.yellow('⚠️  MCP Server functionality is not yet implemented.'));
+    console.log(chalk.gray('This feature allows Claude Code to act as an MCP server,'));
+    console.log(chalk.gray('exposing its tools to other MCP-compatible applications.'));
+    console.log();
+    console.log(chalk.gray('For now, you can:'));
+    console.log(chalk.gray('  • Use `claude mcp add` to add external MCP servers'));
+    console.log(chalk.gray('  • Use `claude mcp list` to see configured servers'));
+    console.log();
+  });
+
+// add 命令 - 添加 MCP 服务器（支持命令和 URL）
+mcpCommand
+  .command('add <name> <commandOrUrl> [args...]')
+  .description('Add an MCP server to Claude Code')
+  .option('-s, --scope <scope>', 'Configuration scope (local, user, project)', 'local')
+  .option('-e, --env <env...>', 'Environment variables (KEY=VALUE)')
+  .action((name, commandOrUrl, args, options) => {
+    const env: Record<string, string> = {};
+    if (options.env) {
+      options.env.forEach((e: string) => {
+        const [key, ...valueParts] = e.split('=');
+        env[key] = valueParts.join('=');
+      });
+    }
+
+    // 判断是 URL 还是命令
+    const isUrl = commandOrUrl.startsWith('http://') || commandOrUrl.startsWith('https://');
+
+    if (isUrl) {
+      // SSE 服务器
+      configManager.addMcpServer(name, {
+        type: 'sse',
+        url: commandOrUrl,
+      });
+      console.log(chalk.green(`✓ Added SSE MCP server: ${name}`));
+    } else {
+      // stdio 服务器
+      configManager.addMcpServer(name, {
+        type: 'stdio',
+        command: commandOrUrl,
+        args: args || [],
+        env,
+      });
+      console.log(chalk.green(`✓ Added stdio MCP server: ${name}`));
+    }
+  });
+
+// remove 命令 - 移除 MCP 服务器
+mcpCommand
+  .command('remove <name>')
+  .description('Remove an MCP server')
+  .option('-s, --scope <scope>', 'Configuration scope (local, user, project)', 'local')
+  .action((name, options) => {
+    if (configManager.removeMcpServer(name)) {
+      console.log(chalk.green(`✓ Removed MCP server: ${name}`));
+    } else {
+      console.log(chalk.red(`MCP server not found: ${name}`));
+    }
+  });
+
+// list 命令 - 列出所有 MCP 服务器
 mcpCommand
   .command('list')
   .description('List configured MCP servers')
-  .action(() => {
+  .option('--status', 'Check connection status of each server (starts and stops server processes)')
+  .action(async (options) => {
     const servers = configManager.getMcpServers();
     const serverNames = Object.keys(servers);
 
@@ -607,53 +831,221 @@ mcpCommand
     }
 
     console.log(chalk.bold('\nConfigured MCP Servers:\n'));
-    serverNames.forEach(name => {
-      const config = servers[name];
-      console.log(chalk.cyan(`  ${name}`));
-      console.log(chalk.gray(`    Type: ${config.type}`));
-      if (config.command) {
-        console.log(chalk.gray(`    Command: ${config.command} ${(config.args || []).join(' ')}`));
+
+    // 如果请求状态，需要连接服务器检测
+    if (options.status) {
+      const { registerMcpServer, connectMcpServer, getServerStatus } = await import('./tools/mcp.js');
+
+      for (const name of serverNames) {
+        const config = servers[name];
+        console.log(chalk.cyan(`  ${name}`));
+        console.log(chalk.gray(`    Type: ${config.type}`));
+        if (config.command) {
+          console.log(chalk.gray(`    Command: ${config.command} ${(config.args || []).join(' ')}`));
+        }
+        if (config.url) {
+          console.log(chalk.gray(`    URL: ${config.url}`));
+        }
+
+        // 尝试连接并获取状态
+        try {
+          registerMcpServer(name, config);
+          const connected = await connectMcpServer(name, false); // 不重试
+          const status = getServerStatus(name);
+
+          if (connected && status) {
+            console.log(chalk.green(`    Status: Connected`));
+            console.log(chalk.gray(`    Tools: ${status.toolCount}`));
+            console.log(chalk.gray(`    Resources: ${status.resourceCount}`));
+          } else {
+            console.log(chalk.yellow(`    Status: Not connected`));
+          }
+        } catch (err) {
+          console.log(chalk.red(`    Status: Error - ${err instanceof Error ? err.message : err}`));
+        }
       }
-      if (config.url) {
-        console.log(chalk.gray(`    URL: ${config.url}`));
-      }
-    });
+
+      // v2.1.6 修复: 确保所有启动的 MCP 进程都被清理
+      console.log(chalk.gray('\nCleaning up MCP server processes...'));
+      await cleanupMcpServers(true); // resetFlag = true 允许后续再次清理
+      console.log(chalk.gray('Done.'));
+    } else {
+      // 不检查状态，只显示配置
+      serverNames.forEach(name => {
+        const config = servers[name];
+        console.log(chalk.cyan(`  ${name}`));
+        console.log(chalk.gray(`    Type: ${config.type}`));
+        if (config.command) {
+          console.log(chalk.gray(`    Command: ${config.command} ${(config.args || []).join(' ')}`));
+        }
+        if (config.url) {
+          console.log(chalk.gray(`    URL: ${config.url}`));
+        }
+      });
+    }
     console.log();
   });
 
+// get 命令 - 获取 MCP 服务器详情
 mcpCommand
-  .command('add <name> <command>')
-  .description('Add an MCP server')
-  .option('-s, --scope <scope>', 'Configuration scope (local, user, project)', 'local')
-  .option('-a, --args <args...>', 'Arguments for the command')
-  .option('-e, --env <env...>', 'Environment variables (KEY=VALUE)')
-  .action((name, command, options) => {
-    const env: Record<string, string> = {};
-    if (options.env) {
-      options.env.forEach((e: string) => {
-        const [key, ...valueParts] = e.split('=');
-        env[key] = valueParts.join('=');
+  .command('get <name>')
+  .description('Get details about an MCP server')
+  .option('--status', 'Check connection status (starts and stops the server process)')
+  .action(async (name, options) => {
+    const servers = configManager.getMcpServers();
+    const config = servers[name];
+
+    if (!config) {
+      console.log(chalk.red(`\nMCP server not found: ${name}\n`));
+      return;
+    }
+
+    console.log(chalk.bold(`\nMCP Server: ${chalk.cyan(name)}\n`));
+    console.log(`  Type: ${config.type}`);
+
+    if (config.command) {
+      console.log(`  Command: ${config.command}`);
+      if (config.args && config.args.length > 0) {
+        console.log(`  Arguments: ${config.args.join(' ')}`);
+      }
+    }
+
+    if (config.url) {
+      console.log(`  URL: ${config.url}`);
+    }
+
+    if (config.env && Object.keys(config.env).length > 0) {
+      console.log('  Environment:');
+      Object.entries(config.env).forEach(([key, value]) => {
+        console.log(`    ${key}=${value}`);
       });
     }
 
-    configManager.addMcpServer(name, {
-      type: 'stdio',
-      command,
-      args: options.args || [],
-      env,
-    });
+    // 如果请求状态，尝试连接服务器
+    if (options.status) {
+      const { registerMcpServer, connectMcpServer, getServerStatus } = await import('./tools/mcp.js');
 
-    console.log(chalk.green(`✓ Added MCP server: ${name}`));
+      console.log(chalk.gray('\n  Checking connection status...'));
+
+      try {
+        registerMcpServer(name, config);
+        const connected = await connectMcpServer(name, false); // 不重试
+        const status = getServerStatus(name);
+
+        if (connected && status) {
+          console.log(chalk.green(`  Status: Connected`));
+          console.log(`  Capabilities: ${status.capabilities.join(', ') || 'none'}`);
+          console.log(`  Tools: ${status.toolCount}`);
+          console.log(`  Resources: ${status.resourceCount}`);
+        } else {
+          console.log(chalk.yellow(`  Status: Not connected`));
+        }
+      } catch (err) {
+        console.log(chalk.red(`  Status: Error - ${err instanceof Error ? err.message : err}`));
+      }
+
+      // v2.1.6 修复: 确保启动的 MCP 进程被清理
+      console.log(chalk.gray('\n  Cleaning up MCP server process...'));
+      await cleanupMcpServers(true); // resetFlag = true 允许后续再次清理
+      console.log(chalk.gray('  Done.'));
+    } else {
+      // 不检查状态时的提示
+      console.log(chalk.gray('\n  Status: Use --status flag to check connection status'));
+    }
+
+    console.log();
   });
 
+// add-json 命令 - 用 JSON 字符串添加 MCP 服务器
 mcpCommand
-  .command('remove <name>')
-  .description('Remove an MCP server')
-  .action((name) => {
-    if (configManager.removeMcpServer(name)) {
-      console.log(chalk.green(`✓ Removed MCP server: ${name}`));
-    } else {
-      console.log(chalk.red(`MCP server not found: ${name}`));
+  .command('add-json <name> <json>')
+  .description('Add an MCP server (stdio or SSE) with a JSON string')
+  .option('-s, --scope <scope>', 'Configuration scope (local, user, project)', 'local')
+  .action((name, jsonString, options) => {
+    try {
+      const config = JSON.parse(jsonString);
+
+      // 验证配置格式
+      if (!config.type || !['stdio', 'sse', 'http'].includes(config.type)) {
+        console.log(chalk.red('\n❌ Invalid server type. Must be "stdio", "sse", or "http"\n'));
+        return;
+      }
+
+      if (config.type === 'stdio' && !config.command) {
+        console.log(chalk.red('\n❌ stdio server requires "command" field\n'));
+        return;
+      }
+
+      if ((config.type === 'sse' || config.type === 'http') && !config.url) {
+        console.log(chalk.red('\n❌ SSE/HTTP server requires "url" field\n'));
+        return;
+      }
+
+      configManager.addMcpServer(name, config);
+      console.log(chalk.green(`\n✓ Added MCP server: ${name}\n`));
+      console.log(chalk.gray(`Config: ${JSON.stringify(config, null, 2)}\n`));
+    } catch (error) {
+      console.log(chalk.red(`\n❌ Invalid JSON: ${error instanceof Error ? error.message : error}\n`));
+    }
+  });
+
+// add-from-claude-desktop 命令 - 从 Claude Desktop 导入 MCP 服务器
+mcpCommand
+  .command('add-from-claude-desktop')
+  .description('Import MCP servers from Claude Desktop (Mac and WSL only)')
+  .option('--select <names...>', 'Select specific servers to import')
+  .option('--all', 'Import all servers without prompting')
+  .action(async (options) => {
+    console.log(chalk.bold('\n📥 Importing MCP servers from Claude Desktop\n'));
+
+    // 从 Claude Desktop 导入 MCP 服务器（功能尚未完全实现）
+    console.log(chalk.yellow('⚠️  This feature is not yet fully implemented.\n'));
+    console.log('Claude Desktop config locations:');
+    console.log(chalk.gray('  macOS: ~/Library/Application Support/Claude/claude_desktop_config.json'));
+    console.log(chalk.gray('  Windows: %APPDATA%\\Claude\\claude_desktop_config.json'));
+    console.log(chalk.gray('  WSL: /mnt/c/Users/<username>/AppData/Roaming/Claude/claude_desktop_config.json\n'));
+    console.log(chalk.cyan('To import manually, use: claude mcp add-json <server-name> \'{"command": "..."}\''));
+  });
+
+// reset-project-choices 命令 - 重置项目级 MCP 服务器选择
+mcpCommand
+  .command('reset-project-choices')
+  .description('Reset all approved and rejected project-scoped (.mcp.json) servers')
+  .action(() => {
+    console.log(chalk.bold('\n🔄 Resetting project MCP server choices\n'));
+
+    try {
+      const projectMcpFile = path.join(process.cwd(), '.claude', '.mcp.json');
+
+      if (fs.existsSync(projectMcpFile)) {
+        fs.unlinkSync(projectMcpFile);
+        console.log(chalk.green('✓ Reset project MCP server choices'));
+        console.log(chalk.gray(`  Removed: ${projectMcpFile}\n`));
+      } else {
+        console.log(chalk.gray('No project MCP choices found.\n'));
+      }
+
+      // 同时清除项目配置中的禁用服务器列表
+      const projectSettingsFile = path.join(process.cwd(), '.claude', 'settings.json');
+      if (fs.existsSync(projectSettingsFile)) {
+        try {
+          const settings = JSON.parse(fs.readFileSync(projectSettingsFile, 'utf-8'));
+
+          if (settings.disabledMcpServers) {
+            delete settings.disabledMcpServers;
+            fs.writeFileSync(projectSettingsFile, JSON.stringify(settings, null, 2));
+            console.log(chalk.green('✓ Cleared disabled MCP servers list'));
+            console.log(chalk.gray(`  Updated: ${projectSettingsFile}\n`));
+          }
+        } catch (err) {
+          // 忽略解析错误
+        }
+      }
+
+      console.log('All project MCP server choices have been reset.');
+      console.log('You will be prompted again for approval when using project-scoped servers.\n');
+    } catch (error) {
+      console.log(chalk.red(`\n❌ Failed to reset: ${error instanceof Error ? error.message : error}\n`));
     }
   });
 
@@ -749,7 +1141,7 @@ program
   .action(async () => {
     console.log(chalk.bold('\nSetup Authentication Token\n'));
     console.log(chalk.gray('This feature requires a Claude subscription.'));
-    console.log(chalk.gray('Visit https://console.anthropic.com to get your API key.\n'));
+    console.log(chalk.gray('Visit https://platform.claude.com to get your API key.\n'));
 
     const rl = readline.createInterface({
       input: process.stdin,
@@ -820,7 +1212,7 @@ program
       }
 
       // 检查更新
-      console.log(chalk.cyan(`Current version: ${VERSION}\n`));
+      console.log(chalk.cyan(`Current version: ${VERSION_FULL}\n`));
       console.log(chalk.gray('Checking for updates...\n'));
 
       const updateInfo = await checkForUpdates({
@@ -1123,7 +1515,7 @@ program
       console.log(`Current Status: ${chalk.cyan(authStatus)}\n`);
       console.log(chalk.bold('Login Methods:\n'));
       console.log('  1. API Key (Recommended for developers)');
-      console.log('     • Get key from: https://console.anthropic.com');
+      console.log('     • Get key from: https://platform.claude.com');
       console.log(chalk.cyan('     • Command: claude login --api-key\n'));
       console.log('  2. OAuth with Claude.ai Account');
       console.log('     • For Claude Pro/Max subscribers');
@@ -1145,7 +1537,7 @@ program
       console.log('for developers using Claude Code.\n');
       console.log(chalk.bold('Steps:\n'));
       console.log('1. Get your API key:');
-      console.log(chalk.cyan('   Visit: https://console.anthropic.com/settings/keys'));
+      console.log(chalk.cyan('   Visit: https://platform.claude.com/settings/keys'));
       console.log('   Create or copy an existing key\n');
       console.log('2. Set the API key (choose one method):\n');
       console.log('   a) Environment variable (recommended):');
@@ -1483,13 +1875,13 @@ apiCommand
       console.log(`Error: ${error instanceof Error ? error.message : String(error)}\n`);
       console.log('Common Issues:\n');
       console.log('1. Invalid API Key:');
-      console.log('   • Verify the key at https://console.anthropic.com/settings/keys');
+      console.log('   • Verify the key at https://platform.claude.com/settings/keys');
       console.log('   • Try regenerating your API key\n');
       console.log('2. Network Issues:');
       console.log('   • Check your internet connection');
       console.log('   • Verify firewall settings\n');
       console.log('3. Rate Limits:');
-      console.log('   • Visit https://console.anthropic.com/settings/limits\n');
+      console.log('   • Visit https://platform.claude.com/settings/limits\n');
     }
   });
 
@@ -1739,6 +2131,128 @@ function loadSettings(settingsPath: string): void {
   }
 }
 
+/**
+ * 【与官方一致】自动初始化所有 MCP 服务器
+ *
+ * 官方逻辑（DZ0 函数）：
+ * 1. 从配置中获取所有 MCP 服务器
+ * 2. 检查每个服务器是否在 disabledMcpServers 列表中
+ * 3. 如果未禁用，则连接服务器
+ * 4. 连接成功后，获取工具列表并注册到 ToolRegistry
+ *
+ * @param verbose 是否显示详细信息
+ * @param strictMode 严格模式 - 仅使用命令行指定的 MCP 配置
+ */
+async function initializeAllMcpServers(verbose?: boolean, strictMode?: boolean): Promise<void> {
+  // 导入必要的模块
+  const { registerMcpServer, connectMcpServer, getMcpServers, createMcpTools } = await import('./tools/mcp.js');
+
+  // 获取所有配置的 MCP 服务器
+  const mcpServers = configManager.getMcpServers();
+  const serverNames = Object.keys(mcpServers);
+
+  if (serverNames.length === 0) {
+    return; // 没有配置的服务器
+  }
+
+  // 获取禁用的服务器列表（从 settings.local.json 或 settings.json）
+  const disabledServers = getDisabledMcpServers();
+
+  // 统计信息
+  let connectedCount = 0;
+  let skippedCount = 0;
+  let failedCount = 0;
+
+  // 并发连接所有服务器（与官方一致，使用 Promise.all）
+  const connectionPromises = serverNames.map(async (name) => {
+    const config = mcpServers[name];
+
+    // 检查是否被禁用
+    if (disabledServers.includes(name)) {
+      if (verbose) {
+        console.log(chalk.gray(`[MCP] Skipping disabled server: ${name}`));
+      }
+      skippedCount++;
+      return;
+    }
+
+    try {
+      // 注册服务器配置
+      registerMcpServer(name, config);
+
+      // 连接服务器
+      const connected = await connectMcpServer(name);
+
+      if (connected) {
+        connectedCount++;
+
+        // 获取工具列表并注册到 ToolRegistry
+        const mcpTools = await createMcpTools(name);
+        for (const tool of mcpTools) {
+          toolRegistry.register(tool);
+        }
+
+        if (verbose) {
+          console.log(chalk.green(`[MCP] Connected: ${name} (${mcpTools.length} tools)`));
+        }
+      } else {
+        failedCount++;
+        if (verbose) {
+          console.log(chalk.yellow(`[MCP] Failed to connect: ${name}`));
+        }
+      }
+    } catch (error) {
+      failedCount++;
+      if (verbose) {
+        console.log(chalk.yellow(`[MCP] Error connecting to ${name}:`, error));
+      }
+    }
+  });
+
+  // 等待所有连接完成
+  await Promise.all(connectionPromises);
+
+  // 显示摘要
+  if (verbose && (connectedCount > 0 || failedCount > 0)) {
+    console.log(chalk.dim(`[MCP] Summary: ${connectedCount} connected, ${skippedCount} skipped, ${failedCount} failed`));
+  }
+}
+
+/**
+ * 获取禁用的 MCP 服务器列表
+ *
+ * 官方逻辑（MPA 函数）：
+ * 从 settings 中读取 disabledMcpServers 数组
+ */
+function getDisabledMcpServers(): string[] {
+  try {
+    // 尝试从 settings.local.json 读取
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '~';
+    const globalDir = process.env.CLAUDE_CONFIG_DIR || path.join(homeDir, '.claude');
+
+    // 读取顺序：local -> project -> global
+    const configPaths = [
+      path.join(process.cwd(), '.claude', 'settings.local.json'),
+      path.join(process.cwd(), '.claude', 'settings.json'),
+      path.join(globalDir, 'settings.json'),
+    ];
+
+    for (const configPath of configPaths) {
+      if (fs.existsSync(configPath)) {
+        const content = fs.readFileSync(configPath, 'utf-8');
+        const config = JSON.parse(content);
+        if (config.disabledMcpServers && Array.isArray(config.disabledMcpServers)) {
+          return config.disabledMcpServers;
+        }
+      }
+    }
+  } catch (error) {
+    // 忽略读取错误
+  }
+
+  return [];
+}
+
 // 斜杠命令处理 (for text mode)
 function handleSlashCommand(input: string, loop: ConversationLoop): void {
   const [cmd, ...args] = input.slice(1).split(' ');
@@ -1845,6 +2359,13 @@ function handleSlashCommand(input: string, loop: ConversationLoop): void {
       }
       break;
 
+    case 'chrome':
+      (async () => {
+        const { showChromeSettings } = await import('./ui/ChromeSettings.js');
+        await showChromeSettings();
+      })();
+      break;
+
     case 'exit':
     case 'quit':
       console.log(chalk.yellow('\nGoodbye!'));
@@ -1890,6 +2411,22 @@ async function main(): Promise<void> {
   if (args.length === 1 && (args[0] === '--version' || args[0] === '-v')) {
     await emitLifecycleEvent('cli_version_fast_path');
     program.parse();
+    return;
+  }
+
+  // Chrome MCP 服务器路径 - 用于 Claude CLI 与 Chrome 扩展通信
+  if (args[0] === '--claude-in-chrome-mcp') {
+    await emitLifecycleEvent('cli_claude_in_chrome_mcp_path');
+    const { runMcpServer } = await import('./chrome-mcp/index.js');
+    await runMcpServer();
+    return;
+  }
+
+  // Chrome Native Host 路径 - 用于 Chrome 扩展与 Native Host 通信
+  if (args[0] === '--chrome-native-host') {
+    await emitLifecycleEvent('cli_chrome_native_host_path');
+    const { runNativeHost } = await import('./chrome-mcp/index.js');
+    await runNativeHost();
     return;
   }
 

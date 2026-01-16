@@ -8,21 +8,68 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
-// /mcp - MCP 服务器管理（基于官方源码完善）
+// /mcp - MCP 服务器管理（官方 local-jsx 风格 - 交互式界面）
 export const mcpCommand: SlashCommand = {
   name: 'mcp',
   description: 'Manage MCP (Model Context Protocol) servers',
-  usage: '/mcp [list|add|remove|get|test]',
+  usage: '/mcp [list|add|remove|get|test|enable|disable]',
   category: 'tools',
-  execute: (ctx: CommandContext): CommandResult => {
+  execute: async (ctx: CommandContext): Promise<CommandResult> => {
     const { args } = ctx;
-    const action = args[0] || 'list';
+    const action = args[0];
+
+    // 如果没有参数或是 list，显示交互式 UI
+    if (!action || action === 'list') {
+      try {
+        // 动态导入 React、McpSettings 组件和 MCP 运行时状态
+        const React = await import('react');
+        const { default: McpSettings } = await import('../ui/McpSettings.js');
+        const { getMcpServers } = await import('../tools/mcp.js');
+
+        // 获取运行时 MCP 服务器状态
+        const runtimeServers = getMcpServers();
+
+        // 将运行时状态转换为可序列化的对象
+        const runtimeState: Record<string, {
+          connected: boolean;
+          connecting: boolean;
+          tools: Array<{ name: string; description?: string }>;
+          resources: Array<{ uri: string; name: string }>;
+          config: Record<string, unknown>;
+        }> = {};
+
+        for (const [name, state] of runtimeServers) {
+          runtimeState[name] = {
+            connected: state.connected,
+            connecting: state.connecting,
+            tools: state.tools || [],
+            resources: state.resources || [],
+            config: { ...state.config } as Record<string, unknown>,
+          };
+        }
+
+        // 返回 JSX 组件，由 App.tsx 在主 UI 中显示（官方 local-jsx 模式）
+        return {
+          success: true,
+          action: 'showJsx',
+          jsx: React.createElement(McpSettings, {
+            cwd: ctx.config.cwd,
+            onDone: () => {},
+            runtimeState, // 传递运行时状态
+          }),
+          shouldHidePromptInput: true,
+        };
+      } catch (error) {
+        // 如果 JSX 组件加载失败，回退到文本模式
+        console.error('Failed to load MCP Settings UI:', error);
+      }
+    }
 
     // 读取配置文件（支持多个 scope）
     const homeDir = os.homedir();
-    const userConfigFile = path.join(homeDir, '.claude', 'settings.json');
-    const projectConfigFile = path.join(ctx.config.cwd, '.claude', 'settings.json');
-    const localConfigFile = path.join(homeDir, '.claude', 'local.json');
+    const userConfigFile = path.join(homeDir, '.claude.json');
+    const projectConfigFile = path.join(ctx.config.cwd, '.mcp.json');
+    const localConfigFile = path.join(homeDir, '.claude', 'settings.json');
 
     const loadConfig = (file: string): any => {
       if (fs.existsSync(file)) {
@@ -292,6 +339,126 @@ Available servers: ${Object.keys(allServers).join(', ') || 'none'}`);
         break;
       }
 
+      case 'enable': {
+        // v2.1.6: 启用 MCP 服务器
+        const serverName = args[1];
+        if (!serverName) {
+          ctx.ui.addMessage('assistant', 'Usage: /mcp enable <server-name>');
+          return { success: false };
+        }
+
+        // 检查服务器是否存在
+        if (!allServers[serverName]) {
+          ctx.ui.addMessage('assistant', `No MCP server found with name: "${serverName}"
+
+Available servers: ${Object.keys(allServers).join(', ') || 'none'}`);
+          return { success: false };
+        }
+
+        try {
+          // 读取禁用列表
+          const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+          const settings = fs.existsSync(settingsPath)
+            ? JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+            : {};
+
+          // 初始化禁用列表
+          if (!Array.isArray(settings.disabledMcpServers)) {
+            settings.disabledMcpServers = [];
+          }
+
+          // 检查服务器是否已启用
+          const isDisabled = settings.disabledMcpServers.includes(serverName);
+          if (!isDisabled) {
+            ctx.ui.addMessage('assistant', `MCP server "${serverName}" is already enabled.`);
+            return { success: true };
+          }
+
+          // 从禁用列表中移除服务器
+          settings.disabledMcpServers = settings.disabledMcpServers.filter(
+            (name: string) => name !== serverName
+          );
+
+          // 保存配置
+          fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+          fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+
+          ctx.ui.addMessage('assistant', `✓ MCP server "${serverName}" enabled
+
+The server will be connected on next restart or when explicitly connected.
+
+To connect now without restarting:
+  /mcp test ${serverName}`);
+          return { success: true };
+        } catch (error) {
+          ctx.ui.addMessage('assistant', `Error enabling server: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          return { success: false };
+        }
+      }
+
+      case 'disable': {
+        // v2.1.6: 禁用 MCP 服务器
+        const serverName = args[1];
+        if (!serverName) {
+          ctx.ui.addMessage('assistant', 'Usage: /mcp disable <server-name>');
+          return { success: false };
+        }
+
+        // 检查服务器是否存在
+        if (!allServers[serverName]) {
+          ctx.ui.addMessage('assistant', `No MCP server found with name: "${serverName}"
+
+Available servers: ${Object.keys(allServers).join(', ') || 'none'}`);
+          return { success: false };
+        }
+
+        try {
+          // 读取禁用列表
+          const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+          const settings = fs.existsSync(settingsPath)
+            ? JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+            : {};
+
+          // 初始化禁用列表
+          if (!Array.isArray(settings.disabledMcpServers)) {
+            settings.disabledMcpServers = [];
+          }
+
+          // 检查服务器是否已禁用
+          const isDisabled = settings.disabledMcpServers.includes(serverName);
+          if (isDisabled) {
+            ctx.ui.addMessage('assistant', `MCP server "${serverName}" is already disabled.`);
+            return { success: true };
+          }
+
+          // 添加到禁用列表
+          settings.disabledMcpServers.push(serverName);
+
+          // 保存配置
+          fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+          fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+
+          // 尝试断开连接（如果已连接）
+          try {
+            const { disconnectMcpServer } = await import('../tools/mcp.js');
+            await disconnectMcpServer(serverName);
+          } catch {
+            // 忽略断开连接错误
+          }
+
+          ctx.ui.addMessage('assistant', `✓ MCP server "${serverName}" disabled
+
+The server will not connect on next startup.
+
+To re-enable the server:
+  /mcp enable ${serverName}`);
+          return { success: true };
+        } catch (error) {
+          ctx.ui.addMessage('assistant', `Error disabling server: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          return { success: false };
+        }
+      }
+
       default:
         ctx.ui.addMessage('assistant', `Unknown action: ${action}
 
@@ -300,7 +467,9 @@ Available commands:
   /mcp add <name>        - Add a new server
   /mcp remove <name>     - Remove a server
   /mcp get <name>        - Get server details
-  /mcp test <name>       - Test server connection`);
+  /mcp test <name>       - Test server connection
+  /mcp enable <name>     - Enable a disabled server
+  /mcp disable <name>    - Disable a server`);
         return { success: false };
     }
 
@@ -787,31 +956,42 @@ Or /ide status to see all options.`;
   },
 };
 
-// /chrome - Chrome 集成 (官方风格 - 检查实际状态)
+// /chrome - Chrome 集成 (官方 local-jsx 风格 - 交互式界面)
 export const chromeCommand: SlashCommand = {
   name: 'chrome',
   description: 'Claude in Chrome (Beta) settings',
   category: 'tools',
-  execute: (ctx: CommandContext): CommandResult => {
-    // 检查 Chrome 扩展配置
-    const configFile = path.join(os.homedir(), '.claude', 'settings.json');
-    let chromeEnabled = false;
-    let chromeConfig: any = null;
+  execute: async (ctx: CommandContext): Promise<CommandResult> => {
+    try {
+      // 动态导入 React 和 ChromeSettings 组件
+      const React = await import('react');
+      const { default: ChromeSettings } = await import('../ui/ChromeSettings.js');
 
-    if (fs.existsSync(configFile)) {
-      try {
-        const config = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
-        chromeEnabled = config.chrome?.enabled || false;
-        chromeConfig = config.chrome || null;
-      } catch {
-        // 忽略解析错误
+      // 返回 JSX 组件，由 App.tsx 在主 UI 中显示（官方 local-jsx 模式）
+      return {
+        success: true,
+        action: 'showJsx',
+        jsx: React.createElement(ChromeSettings, { onDone: () => {} }),
+        shouldHidePromptInput: true,
+      };
+    } catch (error) {
+      // 如果 JSX 组件加载失败，回退到静态显示
+      const configFile = path.join(os.homedir(), '.claude', 'settings.json');
+      let chromeEnabled = false;
+
+      if (fs.existsSync(configFile)) {
+        try {
+          const config = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
+          chromeEnabled = config.chrome?.enabled || config.claudeInChromeDefaultEnabled || false;
+        } catch {
+          // 忽略解析错误
+        }
       }
-    }
 
-    const statusIcon = chromeEnabled ? '✓' : '○';
-    const statusText = chromeEnabled ? 'Enabled' : 'Not connected';
+      const statusIcon = chromeEnabled ? '✓' : '○';
+      const statusText = chromeEnabled ? 'Enabled' : 'Not connected';
 
-    const chromeInfo = `╭─ Claude in Chrome (Beta) ───────────────────────────╮
+      const chromeInfo = `╭─ Claude in Chrome (Beta) ───────────────────────────╮
 │                                                     │
 │  Status: ${statusIcon} ${statusText.padEnd(40)}│
 │                                                     │
@@ -844,25 +1024,50 @@ export const chromeCommand: SlashCommand = {
 Note: This feature is in Beta. Some functionality may be limited.
 Documentation: https://docs.anthropic.com/claude-code/chrome`;
 
-    ctx.ui.addMessage('assistant', chromeInfo);
-    return { success: true };
+      ctx.ui.addMessage('assistant', chromeInfo);
+      return { success: true };
+    }
   },
 };
 
-// /plugin - 插件管理（基于官方源码完善）
+// /plugin - 插件管理（官方 local-jsx 风格 - 交互式界面）
 export const pluginCommand: SlashCommand = {
   name: 'plugin',
   aliases: ['plugins'],
   description: 'Manage Claude Code plugins and marketplaces',
   usage: '/plugin [marketplace|install|list|validate]',
   category: 'tools',
-  execute: (ctx: CommandContext): CommandResult => {
+  execute: async (ctx: CommandContext): Promise<CommandResult> => {
     const { args } = ctx;
-    const action = args[0] || 'list';
+    const action = args[0];
     const subAction = args[1];
 
     const pluginDir = path.join(os.homedir(), '.claude', 'plugins');
     const projectPluginDir = path.join(ctx.config.cwd, '.claude', 'plugins');
+
+    // 如果没有参数，显示交互式 UI（官方 local-jsx 模式）
+    if (!action) {
+      try {
+        // 动态导入 React 和 PluginsDialog 组件
+        const React = await import('react');
+        const { default: PluginsDialog } = await import('../ui/PluginsDialog.js');
+
+        // 返回 JSX 组件，由 App.tsx 在主 UI 中显示
+        return {
+          success: true,
+          action: 'showJsx',
+          jsx: React.createElement(PluginsDialog, {
+            cwd: ctx.config.cwd,
+            onDone: () => {},
+          }),
+          shouldHidePromptInput: true,
+        };
+      } catch (error) {
+        // 如果 JSX 组件加载失败，回退到文本模式
+        console.error('Failed to load Plugins UI:', error);
+        // 继续执行下方的 list 逻辑
+      }
+    }
 
     // /plugin marketplace - 管理插件市场
     if (action === 'marketplace') {
