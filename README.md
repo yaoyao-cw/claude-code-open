@@ -1,6 +1,12 @@
 # The world needs an open-source Claude Code.It will become the foundational infrastructure of AI in the future, running on every PC.
 
-A reverse-engineered restoration based on `@anthropic-ai/claude-code` v2.1.4.
+[![Website](https://img.shields.io/badge/Website-claude--code--open.vercel.app-blue?style=flat-square)](https://claude-code-open.vercel.app)
+[![GitHub Stars](https://img.shields.io/github/stars/kill136/claude-code?style=flat-square)](https://github.com/kill136/claude-code)
+[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+
+🌐 **[visit website](https://claude-code-open.vercel.app)** | 📖 **[中文文档](README.zh-CN.md)**
+
+A reverse-engineered restoration based on `@anthropic-ai/claude-code` v2.1.9.
 
 **For educational and research purposes only.**
 
@@ -504,6 +510,17 @@ npm run test:watch
 - **Tool Tests** (`tests/tools/`) - Individual tool functionality tests
 
 ## Recent Improvements
+
+### v2.1.9 Enhancements (Latest)
+- ✅ **auto:N syntax** - Configure MCP tool search auto-enable threshold (context window percentage 0-100)
+- ✅ **plansDirectory setting** - Customize where plan files are stored
+- ✅ **External editor (Ctrl+G)** - Support in AskUserQuestion "Other" input field
+- ✅ **Session URL attribution** - Add session URL to commits and PRs from web sessions
+- ✅ **${CLAUDE_SESSION_ID}** - String substitution support for skills to access current session ID
+- ✅ **PreToolUse additionalContext** - Hooks can return additional context to the model
+- ✅ **Parallel tool call fix** - Fixed orphan tool_result blocks API error in long sessions
+- ✅ **MCP reconnection fix** - Fixed hanging when cached connection promise never resolves
+- ✅ **Kitty Ctrl+Z fix** - Fixed suspend not working in Kitty keyboard protocol terminals
 
 ### v2.1.4+ Enhancements
 - ✅ **Tool-level error handling & retry** - Exponential backoff for transient failures

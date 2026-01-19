@@ -357,6 +357,183 @@ function App({ onNavigateToBlueprint, onNavigateToSwarm }: AppProps) {
             }
           }
           break;
+
+        // 持续开发消息处理
+        case 'continuous_dev:flow_started': {
+          const newMessage: ChatMessage = {
+            id: `dev-${Date.now()}`,
+            role: 'assistant',
+            timestamp: Date.now(),
+            content: [{
+              type: 'dev_progress',
+              data: {
+                phase: 'analyzing_codebase',
+                percentage: 0,
+                tasksCompleted: 0,
+                tasksTotal: 0,
+                status: 'running',
+                currentTask: '流程启动中...'
+              }
+            }]
+          };
+          setMessages(prev => [...prev, newMessage]);
+          break;
+        }
+
+        case 'continuous_dev:status_update':
+        case 'continuous_dev:progress_update':
+        case 'continuous_dev:phase_changed':
+        case 'continuous_dev:task_completed':
+        case 'continuous_dev:task_failed':
+        case 'continuous_dev:paused':
+        case 'continuous_dev:resumed':
+        case 'continuous_dev:flow_failed':
+        case 'continuous_dev:flow_paused':
+        case 'continuous_dev:flow_resumed':
+        case 'continuous_dev:flow_stopped':
+        case 'continuous_dev:completed': {
+           setMessages(prev => {
+              const newMessages = [...prev];
+              // 从后往前找最近的一条包含进度条的消息
+              for (let i = newMessages.length - 1; i >= 0; i--) {
+                const chatMsg = newMessages[i];
+                if (chatMsg.role === 'assistant') {
+                  const progressIndex = chatMsg.content.findIndex(c => c.type === 'dev_progress');
+                  if (progressIndex !== -1) {
+                    const prevData = (chatMsg.content[progressIndex] as any).data;
+                    
+                    // 构建新的数据
+                    const newData = { ...prevData };
+                    
+                    // 根据消息类型和 payload 更新特定字段
+                    // 使用 msg.type (外层 WSMessage)
+                    if (msg.type === 'continuous_dev:paused' || msg.type === 'continuous_dev:flow_paused') newData.status = 'paused';
+                    else if (msg.type === 'continuous_dev:resumed' || msg.type === 'continuous_dev:flow_resumed') newData.status = 'running';
+                    else if (msg.type === 'continuous_dev:flow_failed') {
+                      newData.status = 'error';
+                      newData.phase = 'failed';
+                    } else if (msg.type === 'continuous_dev:completed') {
+                      newData.phase = 'completed';
+                    } else if (payload?.phase) {
+                      newData.phase = payload.phase;
+                    }
+                    
+                    if (msg.type === 'continuous_dev:status_update' && payload?.stats) {
+                      if (payload.stats.tasksCompleted !== undefined) {
+                        newData.tasksCompleted = payload.stats.tasksCompleted;
+                      }
+                      if (payload.stats.tasksTotal !== undefined) {
+                        newData.tasksTotal = payload.stats.tasksTotal;
+                      }
+                      if (newData.tasksTotal > 0) {
+                        newData.percentage = Math.round((newData.tasksCompleted / newData.tasksTotal) * 100);
+                      }
+                    }
+                    
+                    // 确保更新
+                    if (payload?.percentage !== undefined) newData.percentage = Math.round(payload.percentage);
+                    if (payload?.currentTask) newData.currentTask = payload.currentTask;
+                    if (payload?.tasksCompleted !== undefined) newData.tasksCompleted = payload.tasksCompleted;
+                    if (payload?.tasksTotal !== undefined) newData.tasksTotal = payload.tasksTotal;
+
+                    // 创建新的 content 数组以触发更新
+                    const newContent = [...chatMsg.content];
+                    newContent[progressIndex] = {
+                      type: 'dev_progress',
+                      data: newData
+                    };
+                    
+                    newMessages[i] = { ...chatMsg, content: newContent };
+                    return newMessages;
+                  }
+                }
+              }
+              return newMessages;
+           });
+           break;
+        }
+
+        case 'continuous_dev:approval_required': {
+          // 收到审批请求，添加一条新的消息显示 ImpactAnalysisCard
+          const impactAnalysis = (payload as any).impactAnalysis;
+          if (impactAnalysis) {
+            const newMessage: ChatMessage = {
+              id: `dev-approval-${Date.now()}`,
+              role: 'assistant',
+              timestamp: Date.now(),
+              content: [{
+                type: 'impact_analysis',
+                data: impactAnalysis
+              }]
+            };
+            setMessages(prev => [...prev, newMessage]);
+          }
+          const blueprint = (payload as any).blueprint;
+          if (blueprint) {
+            const newMessage: ChatMessage = {
+              id: `dev-blueprint-${Date.now()}`,
+              role: 'assistant',
+              timestamp: Date.now(),
+              content: [{
+                type: 'blueprint',
+                blueprintId: blueprint.id,
+                name: blueprint.name,
+                moduleCount: blueprint.modules?.length || 0,
+                processCount: blueprint.businessProcesses?.length || 0,
+                nfrCount: blueprint.nfrs?.length || 0
+              }]
+            };
+            setMessages(prev => [...prev, newMessage]);
+          }
+          break;
+        }
+
+        case 'continuous_dev:regression_failed': {
+          const newMessage: ChatMessage = {
+            id: `dev-regression-${Date.now()}`,
+            role: 'assistant',
+            timestamp: Date.now(),
+            content: [{
+              type: 'regression_result',
+              data: payload as any
+            }]
+          };
+          setMessages(prev => [...prev, newMessage]);
+          break;
+        }
+
+        case 'continuous_dev:regression_passed': {
+          const newMessage: ChatMessage = {
+            id: `dev-regression-${Date.now()}`,
+            role: 'assistant',
+            timestamp: Date.now(),
+            content: [{
+              type: 'regression_result',
+              data: payload as any
+            }]
+          };
+          setMessages(prev => [...prev, newMessage]);
+          break;
+        }
+
+        case 'continuous_dev:cycle_review_completed': {
+          const newMessage: ChatMessage = {
+            id: `dev-cycle-${Date.now()}`,
+            role: 'assistant',
+            timestamp: Date.now(),
+            content: [{
+              type: 'cycle_review',
+              data: payload as any
+            }]
+          };
+          setMessages(prev => [...prev, newMessage]);
+          break;
+        }
+
+        case 'continuous_dev:ack':
+           // 可以选择显示 toast 或忽略
+           console.log('[Dev] Server ACK:', (payload as any).message);
+           break;
       }
     });
 
@@ -670,6 +847,34 @@ function App({ onNavigateToBlueprint, onNavigateToSwarm }: AppProps) {
     }
   };
 
+  // 持续开发动作处理
+  const handleDevAction = useCallback((action: string, data?: any) => {
+    switch (action) {
+      case 'approve':
+        send({ type: 'continuous_dev:approve' });
+        break;
+      case 'reject':
+        // 拒绝通常意味着不想继续执行，可以暂停
+        send({ type: 'continuous_dev:pause' });
+        break;
+      case 'pause':
+        send({ type: 'continuous_dev:pause' });
+        break;
+      case 'resume':
+        send({ type: 'continuous_dev:resume' });
+        break;
+      case 'cancel':
+        // TODO: 暂时用 pause 代替 cancel
+        send({ type: 'continuous_dev:pause' });
+        break;
+      case 'rollback':
+        send({ type: 'continuous_dev:rollback', payload: data });
+        break;
+      default:
+        console.warn('未知的开发动作:', action);
+    }
+  }, [send]);
+
   // 输入处理
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
@@ -738,6 +943,7 @@ function App({ onNavigateToBlueprint, onNavigateToSwarm }: AppProps) {
                 message={msg}
                 onNavigateToBlueprint={onNavigateToBlueprint}
                 onNavigateToSwarm={onNavigateToSwarm}
+                onDevAction={handleDevAction}
               />
             ))
           )}

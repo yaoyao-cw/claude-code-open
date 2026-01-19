@@ -211,6 +211,11 @@ export interface HookResult {
   decision?: 'allow' | 'deny' | 'block';
   /** 决策原因 */
   reason?: string;
+  /**
+   * v2.1.9: PreToolUse hooks 返回的额外上下文信息
+   * 会被添加到发送给模型的消息中
+   */
+  additionalContext?: string;
 }
 
 /**
@@ -412,6 +417,42 @@ async function executeCommandHook(
     const timeout = hook.timeout || DEFAULT_HOOK_TIMEOUT;
     let stdout = '';
     let stderr = '';
+
+    // 内置蓝图 hooks（不执行外部命令）
+    if (hook.command === '__blueprint_boundary_check__') {
+      import('./blueprint-hooks.js')
+        .then(({ preToolUseBoundaryCheck }) => preToolUseBoundaryCheck(
+          input.toolName || '',
+          (input.toolInput as Record<string, any>) || {}
+        ))
+        .then((result) => {
+          if (!result.allowed) {
+            resolve({
+              success: false,
+              blocked: true,
+              blockMessage: result.message || 'Blocked by blueprint boundary check',
+            });
+            return;
+          }
+          resolve({ success: true });
+        })
+        .catch((err) => {
+          resolve({ success: false, error: err.message || String(err) });
+        });
+      return;
+    }
+
+    if (hook.command === '__blueprint_test_runner__') {
+      import('./blueprint-hooks.js')
+        .then(({ postToolUseTestRunner }) => postToolUseTestRunner(
+          input.toolName || '',
+          (input.toolInput as Record<string, any>) || {},
+          { success: true, output: input.toolOutput || '' }
+        ))
+        .then(() => resolve({ success: true, async: true }))
+        .catch((err) => resolve({ success: false, error: err.message || String(err) }));
+      return;
+    }
 
     // 替换命令中的环境变量
     const command = replaceCommandVariables(hook.command, input);
@@ -1077,12 +1118,13 @@ export function isBlocked(results: HookResult[]): { blocked: boolean; message?: 
 
 /**
  * PreToolUse hook 辅助函数
+ * v2.1.9: 支持返回 additionalContext
  */
 export async function runPreToolUseHooks(
   toolName: string,
   toolInput: unknown,
   sessionId?: string
-): Promise<{ allowed: boolean; message?: string }> {
+): Promise<{ allowed: boolean; message?: string; additionalContext?: string }> {
   const results = await runHooks({
     event: 'PreToolUse',
     toolName,
@@ -1091,9 +1133,19 @@ export async function runPreToolUseHooks(
   });
 
   const blockCheck = isBlocked(results);
+
+  // v2.1.9: 收集所有 hook 返回的 additionalContext
+  const additionalContexts = results
+    .filter((r) => r.additionalContext)
+    .map((r) => r.additionalContext);
+
   return {
     allowed: !blockCheck.blocked,
     message: blockCheck.message,
+    // 如果有多个 hook 返回 additionalContext，用分隔符连接
+    additionalContext: additionalContexts.length > 0
+      ? additionalContexts.join('\n---\n')
+      : undefined,
   };
 }
 

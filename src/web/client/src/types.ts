@@ -19,15 +19,79 @@ export type ChatContent =
   | { type: 'text'; text: string }
   | { type: 'image'; source: MediaSource; fileName?: string; url?: string }
   | { type: 'document'; source: MediaSource; fileName?: string }  // PDF 和其他文档
-  | { type: 'tool_use'; id: string; name: string; input: unknown; status: ToolStatus; result?: ToolResult }
+  | ({ type: 'tool_use' } & ToolUse)
   | { type: 'thinking'; text: string }
-  | {
+    | {
       type: 'blueprint';
       blueprintId: string;
       name: string;
       moduleCount: number;
       processCount: number;
       nfrCount: number;
+    }
+    | {
+      type: 'impact_analysis';
+      data: {
+        risk: {
+          overallLevel: 'low' | 'medium' | 'high' | 'critical';
+          breakingChanges: number;
+          highRiskFiles: number;
+          summary: string;
+        };
+        impact: {
+          additions: Array<{ path: string; changeType: string; riskLevel: string; reason: string }>;
+          modifications: Array<{ path: string; changeType: string; riskLevel: string; reason: string }>;
+          deletions: Array<{ path: string; changeType: string; riskLevel: string; reason: string }>;
+          byModule: Array<{ moduleName: string; modulePath: string; overallRisk: string; requiresReview: boolean }>;
+          interfaceChanges: Array<{ interfaceName: string; changeType: string; breakingChange: boolean }>;
+        };
+        safetyBoundary: {
+          allowedPaths: Array<{ path: string; operations: Array<'read' | 'write' | 'delete'> }>;
+          readOnlyPaths: string[];
+          forbiddenPaths: Array<{ path: string; reason: string }>;
+          requireReviewPaths: Array<{ path: string; reason: string }>;
+        };
+        regressionScope: {
+          mustRun: Array<{ testPath: string; reason: string }>;
+          shouldRun: Array<{ testPath: string; reason: string }>;
+          allExisting: string[];
+          estimatedDuration: number;
+        };
+        recommendations: string[];
+      };
+    }
+    | {
+      type: 'dev_progress';
+      data: {
+        phase: 'idle' | 'analyzing_codebase' | 'analyzing_requirement' | 'generating_blueprint' | 'awaiting_approval' | 'executing' | 'validating' | 'cycle_review' | 'completed' | 'failed' | 'paused';
+        percentage: number;
+        currentTask?: string;
+        tasksCompleted: number;
+        tasksTotal: number;
+        status?: 'running' | 'paused' | 'error';
+      };
+    }
+    | {
+      type: 'regression_result';
+      data: {
+        passed: boolean;
+        failureReason?: string;
+        failedTests?: string[];
+        recommendations?: string[];
+        duration?: number;
+        newTests?: { total: number; passed: number; failed: number };
+        regressionTests?: { total: number; passed: number; failed: number };
+      };
+    }
+    | {
+      type: 'cycle_review';
+      data: {
+        score: number;
+        summary: string;
+        issues?: Array<{ category: string; severity: string; description: string; suggestion?: string }>;
+        recommendations?: string[];
+        rollbackSuggestion?: { recommended: boolean; targetCheckpoint?: string; reason?: string };
+      };
     };
 
 // 媒体源（图片和文档通用）
@@ -148,10 +212,33 @@ export type WSMessageType =
   | 'session_renamed'
   | 'history'
   | 'pong'
+  | 'session_new_ready'
   // 子 agent 相关消息类型
   | 'task_status'
   | 'subagent_tool_start'
-  | 'subagent_tool_end';
+  | 'subagent_tool_end'
+  // 持续开发相关消息类型
+  | 'continuous_dev:ack'
+  | 'continuous_dev:status_update'
+  | 'continuous_dev:progress_update'
+  | 'continuous_dev:approval_required'
+  | 'continuous_dev:regression_failed'
+  | 'continuous_dev:regression_passed'
+  | 'continuous_dev:cycle_review_started'
+  | 'continuous_dev:cycle_review_completed'
+  | 'continuous_dev:cycle_reset'
+  | 'continuous_dev:flow_failed'
+  | 'continuous_dev:flow_stopped'
+  | 'continuous_dev:flow_paused'
+  | 'continuous_dev:flow_resumed'
+  | 'continuous_dev:flow_started'
+  | 'continuous_dev:phase_changed'
+  | 'continuous_dev:task_completed'
+  | 'continuous_dev:task_failed'
+  | 'continuous_dev:paused'
+  | 'continuous_dev:resumed'
+  | 'continuous_dev:stopped'
+  | 'continuous_dev:completed';
 
 export interface WSMessage {
   type: WSMessageType;
